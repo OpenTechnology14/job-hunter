@@ -1089,6 +1089,88 @@ def test_admin_debug_off_by_default():
     assert r["other_env"] is False, "only ADMIN_DEBUG=1 enables debug"
 
 
+def _guard(dry_run=False, answers=("",), now=None):
+    """SubmissionGuard with scripted answers and a controllable clock."""
+    from submission_guard import SubmissionGuard
+    clock = now if now is not None else [0.0]
+    queue = list(answers)
+    asked = []
+    def confirm(prompt):
+        asked.append(prompt)
+        return queue.pop(0) if queue else ""
+    g = SubmissionGuard(dry_run=dry_run, ttl_seconds=60, clock=lambda: clock[0], confirm=confirm)
+    return g, asked, clock
+
+
+def test_guard_dry_run_cannot_mint_or_click():
+    """JH-003: dry-run never asks, never mints a token, never calls the click."""
+    g, asked, _ = _guard(dry_run=True)
+    clicks = []
+    token = g.request_confirmation("job-a", "fp1")
+    assert token is None and asked == [], "dry-run must not prompt or mint"
+    assert g.submit_once(token, "job-a", "fp1", lambda: clicks.append(1)) is False
+    assert clicks == [], "dry-run clicked"
+
+
+def test_guard_token_single_use_and_scoped():
+    """JH-003 / GAP-JH-05: one click per confirmation, bound to its job and page."""
+    g, _, _ = _guard(answers=("", "", "", "s"))
+    clicks = []
+    t = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append("a")) is True
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append("a2")) is False, "replay submitted"
+    t2 = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t2, "job-b", "fp1", lambda: clicks.append("b")) is False, "reused on another job"
+    assert g.submit_once(t2, "job-a", "fp1", lambda: clicks.append("a3")) is False, "token survived a refusal"
+    t3 = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t3, "job-a", "fp2", lambda: clicks.append("c")) is False, "page change not detected"
+    assert g.request_confirmation("job-a", "fp1") is None, "'s' must cancel"
+    assert clicks == ["a"], f"clicks: {clicks}"
+
+
+def test_guard_expiry_and_invalidation():
+    """JH-003: tokens expire, and navigation or a newer confirmation voids older ones."""
+    g, _, clock = _guard(answers=("", "", "", ""))
+    clicks = []
+    t = g.request_confirmation("job-a", "fp1")
+    clock[0] += 61
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append(1)) is False, "expired token submitted"
+    t = g.request_confirmation("job-a", "fp1")
+    g.invalidate()  # what apply_to_job does on navigation
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append(2)) is False, "survived navigation"
+    old = g.request_confirmation("job-a", "fp1")
+    new = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(old, "job-a", "fp1", lambda: clicks.append(3)) is False, "older token still live"
+    # Fail-closed: the refused stale attempt also voided the newer token.
+    assert g.submit_once(new, "job-a", "fp1", lambda: clicks.append(4)) is False, "refusal must void the live token"
+    t = g.request_confirmation("job-a", "fp1")
+    assert t is not None and g.submit_once(t, "job-a", "fp1", lambda: clicks.append(5)) is True
+    assert clicks == [5], f"clicks: {clicks}"
+
+
+def test_easy_apply_refuses_if_page_changes_after_confirm():
+    """JH-003: if the page navigates between the SUBMIT answer and the click, nothing is submitted."""
+    ba = _import_browser_apply_isolated()
+    page = _FakeApplyPage(["Submit application"])
+    page.url = "https://jobs.example.test/apply/1"
+    import builtins
+    original = builtins.input
+    answers = iter(["", ""])
+    def answer_then_navigate(prompt=""):
+        if "SUBMIT" in prompt:
+            page.url = "https://jobs.example.test/apply/2"  # page changed under us
+        return next(answers, "")
+    builtins.input = answer_then_navigate
+    try:
+        import io, contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = ba.handle_easy_apply(page, "", dry_run=False)
+    finally:
+        builtins.input = original
+    assert result is False, "must not report a submission"
+    assert "Submit application" not in page.clicks, f"clicked Submit after the page changed: {page.clicks}"
+
+
 # ═══════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════
@@ -1160,6 +1242,10 @@ def main():
         runner.run("Dry-run Easy Apply never clicks Submit", test_dry_run_easy_apply_never_clicks_submit)
         runner.run("Dry-run form apply clicks nothing", test_dry_run_form_apply_clicks_nothing)
         runner.run("Live submit needs explicit confirmation", test_live_submit_requires_explicit_confirmation)
+        runner.run("Guard: dry-run cannot mint or click (JH-003)", test_guard_dry_run_cannot_mint_or_click)
+        runner.run("Guard: single-use, job/page-scoped (GAP-JH-05)", test_guard_token_single_use_and_scoped)
+        runner.run("Guard: expiry and invalidation (JH-003)", test_guard_expiry_and_invalidation)
+        runner.run("Easy Apply refuses after page change (JH-003)", test_easy_apply_refuses_if_page_changes_after_confirm)
 
     print(f"\n── Config Tests ──")
     runner.run("Admin server exists", test_admin_imports)

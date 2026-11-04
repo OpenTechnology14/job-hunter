@@ -156,7 +156,7 @@ Set `STORAGE_MODE` in the profile file. Both modes can coexist - they write to d
    - Fills standard fields from `USER_PROFILE`
    - Applies custom fields from `form_config.json`
    - Uploads resume PDF via `resume_picker.py`
-   - **Pauses for user confirmation**
+   - **Pauses for user confirmation**: the Submit click goes only through `submission_guard.SubmissionGuard`, as a single-use token bound to this job and page, expiring after 120 s (JH-003)
    - On confirm: submits, marks "Done" in CSV
 4. `--dry-run` flag: does everything except submit
 

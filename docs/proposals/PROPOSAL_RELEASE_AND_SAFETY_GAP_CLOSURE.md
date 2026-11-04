@@ -355,3 +355,11 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 **Not yet covered (still Proposed):** `SubmissionGuard` tokens (GAP-JH-05: no single-use, per-job/page confirmation exists, only a per-prompt `input()`); typed outcomes (GAP-JH-06: live `handle_form_apply` still returns `True` on "Enter when done" without observing a submit); and the `apply_to_job` "manual" path. These tests characterize today's behavior. When the guard lands, they become regression tests against it.
 
 **Next concrete step:** add `SubmissionGuard` (§7.2) behind the existing prompts. That means one token per job ID plus page fingerprint, consumed once, impossible to mint in dry-run. Then extend these fake-page tests to GAP-JH-05. It needs no owner decision and stays outside the hosted track.
+
+### 2026-11-04 — JH-WP2 step 2: SubmissionGuard (GAP-JH-05)
+
+**Verified:** `submission_guard.py` implements §7.2, and `browser_apply.handle_easy_apply` now routes its only Submit click through `SubmissionGuard.submit_once`. Tokens are single-use, bound to the job (URL) and a page fingerprint (URL plus submit label), expire after 120 s, can't be minted in dry-run, and are voided by navigation (`apply_to_job`), a newer confirmation, or any refused attempt (fail-closed). `run_tests.py --safety` adds four tests: dry-run, single-use and scope (GAP-JH-05), expiry and invalidation, and a page change between confirmation and click. Removing each guard check makes at least two tests fail.
+
+**Not done:** typed outcomes (§7.1, GAP-JH-06) change what the Apply column shows for hand-finished forms, so they're held for owner decision JH-D07 in `docs/GAP_AUDIT.md`.
+
+**Next concrete step:** once JH-D07 is answered, add `ApplyState`/`ApplyOutcome` and the compatibility serializer from §14.

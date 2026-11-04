@@ -21,6 +21,7 @@ from playwright.sync_api import sync_playwright, Page
 from config import USER_PROFILE, ROLE_PROFILES, PROFILE_DIR
 from resume_picker import get_resume_by_filename
 from storage import get_worksheet, pull_ready_jobs, mark_applied
+from submission_guard import SubmissionGuard, current_page_fingerprint
 
 
 # ── Autofill Data ─────────────────────────────────────────
@@ -245,7 +246,10 @@ def upload_resume(page: Page, pdf_path: str) -> bool:
     return True
 
 
-def handle_easy_apply(page: Page, pdf_path: str, dry_run: bool = False) -> bool:
+def handle_easy_apply(page: Page, pdf_path: str, dry_run: bool = False,
+                      job_id: str = "", guard: SubmissionGuard = None) -> bool:
+    guard = guard or SubmissionGuard(dry_run=dry_run)
+    job_id = job_id or (getattr(page, "url", "") or "")
     btn = page.query_selector(
         'button.jobs-apply-button, button[aria-label*="Easy Apply"], '
         'button[aria-label*="easy apply"], .indeed-apply-button'
@@ -278,10 +282,15 @@ def handle_easy_apply(page: Page, pdf_path: str, dry_run: bool = False) -> bool:
             if dry_run:
                 print("    🏁 DRY RUN — would submit here. Skipping.")
                 return False
-            confirm = input("\n    🚀 SUBMIT? Enter to send, 's' to skip: ").strip()
-            if confirm.lower() == "s":
+            # The only Submit click in this module goes through the guard
+            # (JH-003): one fresh confirmation, bound to this job and page.
+            token = guard.request_confirmation(job_id, current_page_fingerprint(page, label))
+            if not token:
                 return False
-            next_btn.click()
+            if not guard.submit_once(token, job_id, current_page_fingerprint(page, label),
+                                     next_btn.click):
+                print("    ⚠️  Confirmation no longer valid (page changed or expired). Not submitted.")
+                return False
             print("    ✅ Submitted!")
             return True
         else:
@@ -307,7 +316,8 @@ def handle_form_apply(page: Page, pdf_path: str, dry_run: bool = False) -> bool:
 
 # ── Main Apply Flow ───────────────────────────────────────
 
-def apply_to_job(page: Page, job: dict, dry_run: bool = False) -> dict:
+def apply_to_job(page: Page, job: dict, dry_run: bool = False,
+                 guard: SubmissionGuard = None) -> dict:
     url = job.get("url", "")
     if not url:
         return {"success": False, "reason": "No URL"}
@@ -327,6 +337,8 @@ def apply_to_job(page: Page, job: dict, dry_run: bool = False) -> dict:
     else:
         print(f"    ⚠️  No resume found")
 
+    guard = guard or SubmissionGuard(dry_run=dry_run)
+    guard.invalidate()  # navigating to a new job voids any earlier confirmation
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
@@ -338,7 +350,7 @@ def apply_to_job(page: Page, job: dict, dry_run: bool = False) -> dict:
 
     success = False
     if detected == "easy-apply":
-        success = handle_easy_apply(page, pdf_path, dry_run)
+        success = handle_easy_apply(page, pdf_path, dry_run, job_id=url, guard=guard)
     elif detected in ("resume-upload", "form-fill"):
         success = handle_form_apply(page, pdf_path, dry_run)
     else:
@@ -378,10 +390,11 @@ def run_apply_session(dry_run: bool = False):
         )
         page = context.new_page()
 
+        guard = SubmissionGuard(dry_run=dry_run)  # one per session; invalidated per job
         for i, job in enumerate(ready_jobs):
             print(f"\n[{i+1}/{len(ready_jobs)}]", end="")
             try:
-                result = apply_to_job(page, job, dry_run)
+                result = apply_to_job(page, job, dry_run, guard=guard)
                 if result["success"]:
                     row_ref = job.get("sheet_row") or job.get("csv_row_index")
                     mark_applied(ws, row_ref, result.get("resume_used", ""))

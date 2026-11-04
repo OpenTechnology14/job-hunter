@@ -219,3 +219,7 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 14.1 | Dry-run Easy Apply reaches Submit | Fake flow: Continue → Review → Submit, `dry_run=True` | Submit never clicked; returns `False` (GAP-JH-04) |
 | 14.2 | Dry-run form apply | Fake page with a visible Submit, `dry_run=True` | No clicks at all; returns `False` |
 | 14.3 | Live submit confirmation | `s` at SUBMIT prompt, then Enter on a fresh flow | Skip → no click; confirm → exactly one Submit click |
+| 14.4 | Guard in dry-run | `SubmissionGuard(dry_run=True)` | Never prompts, never mints a token, never clicks (JH-003) |
+| 14.5 | Single-use, scoped token | Replay a token; use it for another job; change the page fingerprint | Each refused; exactly one click overall (GAP-JH-05) |
+| 14.6 | Expiry and invalidation | Advance the clock past the TTL; invalidate (navigation); issue a newer confirmation | Old tokens refused; any refused attempt voids the live token (fail-closed) |
+| 14.7 | Page change after confirm | The page URL changes between the SUBMIT answer and the click | Not submitted; no Submit click |
