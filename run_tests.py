@@ -1067,6 +1067,28 @@ def test_generate_resume_route_gone():
     assert "Resumes page" in (result["body"] or {}).get("error", ""), f"unhelpful error: {result}"
 
 
+def test_admin_debug_off_by_default():
+    """JH-011: the Flask debugger is off unless --debug / ADMIN_DEBUG=1 is given."""
+    code = (
+        "import sys, json; sys.path.insert(0, 'admin'); import server\n"
+        "seen = {}\n"
+        "server.main(argv=['server.py'], env={}, run=lambda **kw: seen.update(kw))\n"
+        "print(json.dumps({'default': seen.get('debug'), 'host': seen.get('host'),\n"
+        "  'flag': server.debug_enabled(['server.py', '--debug'], {}),\n"
+        "  'env': server.debug_enabled(['server.py'], {'ADMIN_DEBUG': '1'}),\n"
+        "  'other_env': server.debug_enabled(['server.py'], {'ADMIN_DEBUG': 'true'})}))\n"
+    )
+    proc, _ = _run_isolated_python(code, {"PYTHONPATH": str(ROOT) + os.pathsep + str(ROOT / "admin")})
+    if "No module named 'flask'" in proc.stderr:
+        raise SkipTest("flask not installed")
+    assert proc.returncode == 0, f"server import/main failed: {proc.stderr[-400:]}"
+    r = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert r["default"] is False, f"debug must default to False, got {r['default']}"
+    assert r["host"] == "127.0.0.1", f"must bind loopback, got {r['host']}"
+    assert r["flag"] is True and r["env"] is True, "explicit opt-in must enable debug"
+    assert r["other_env"] is False, "only ADMIN_DEBUG=1 enables debug"
+
+
 # ═══════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════
@@ -1145,6 +1167,7 @@ def main():
     runner.run("Example profile", test_example_profile)
     runner.run("No profile -> clear error (JH-016)", test_no_profile_gives_clear_error)
     runner.run("Generate-resume route is 410 (JH-015)", test_generate_resume_route_gone)
+    runner.run("Admin debug off by default (JH-011)", test_admin_debug_off_by_default)
 
     all_passed = runner.summary()
     sys.exit(0 if all_passed else 1)

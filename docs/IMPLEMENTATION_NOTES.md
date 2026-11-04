@@ -12,7 +12,7 @@
 
 - Profile modules are Python and are executed by the loader. They are trusted code, not safe uploads.
 - Job state uses CSV read/modify/write and has no demonstrated concurrency protection.
-- The admin server uses Flask's debug development server on loopback.
+- The admin server uses Flask's development server on loopback. Since 2026-11-04 the debugger is off unless `--debug` or `ADMIN_DEBUG=1` is given (JH-011); it is still not a production WSGI server.
 - The test suite can import the active profile and produce user-specific output; isolation is required before public CI.
 
 ## Implementation guardrails

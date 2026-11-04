@@ -194,6 +194,9 @@ python run_apply.py --profile yourname              # Real apply (pauses before 
 python admin/server.py
 # Open http://localhost:5175
 
+# Flask debugger + auto-reload for local development only (off by default)
+python admin/server.py --debug
+
 # Multi-user deployed mode
 python admin/server.py --deployed
 # or: DEPLOYED=1 python admin/server.py

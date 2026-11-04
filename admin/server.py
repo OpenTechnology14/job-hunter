@@ -11,6 +11,10 @@ Multi-user support:
 Usage:
     python admin/server.py              # local mode
     python admin/server.py --deployed   # deployed mode
+    python admin/server.py --debug      # Flask debugger + auto-reload (local development only)
+
+The Flask debugger is OFF unless --debug or ADMIN_DEBUG=1 is given (JH-011): its
+interactive console runs arbitrary Python for anyone who can reach the page.
 """
 import csv
 import json
@@ -1021,10 +1025,24 @@ def all_users_summary():
 
 # ── Main ────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def debug_enabled(argv=None, env=None) -> bool:
+    """Debug only on explicit request (JH-011); never by default."""
+    argv = sys.argv if argv is None else argv
+    env = os.environ if env is None else env
+    return "--debug" in argv or env.get("ADMIN_DEBUG", "") == "1"
+
+
+def main(argv=None, env=None, run=None):
+    debug = debug_enabled(argv, env)
     mode = "DEPLOYED" if DEPLOYED_MODE else "LOCAL"
     print(f"\n  Admin Panel starting... ({mode} mode)")
     print(f"  Project root: {PROJECT_ROOT}")
     print(f"  Profiles: {', '.join(_list_profiles())}")
+    if debug:
+        print("  ⚠️  Flask debugger ON — local development only; never expose this port.")
     print(f"\n  Open http://localhost:5175\n")
-    app.run(host="127.0.0.1", port=5175, debug=True)
+    (run or app.run)(host="127.0.0.1", port=5175, debug=debug)
+
+
+if __name__ == "__main__":
+    main()
