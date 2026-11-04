@@ -26,6 +26,7 @@ from dataclasses import dataclass, asdict
 import requests
 
 from config import ROLE_PROFILES, SEARCH_SETTINGS, DATA_DIR
+from atomic_io import atomic_write_json
 
 
 @dataclass
@@ -505,8 +506,7 @@ def scrape_all_jobs() -> list[JobListing]:
     # Save
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     output = DATA_DIR / f"raw_jobs_{timestamp}.json"
-    with open(output, "w") as f:
-        json.dump([asdict(j) for j in all_jobs], f, indent=2)
+    atomic_write_json(output, [asdict(j) for j in all_jobs])
 
     # Summary
     sources = {}

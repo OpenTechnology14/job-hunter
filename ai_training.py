@@ -35,6 +35,8 @@ from pathlib import Path
 
 import requests
 
+from atomic_io import atomic_write_json, file_lock
+
 # NOTE: `from scraper import JobListing` happens lazily inside the scrape
 # functions. Importing scraper pulls in config, which loads the active
 # profile — a side effect the Admin Panel server must avoid when it only
@@ -452,11 +454,15 @@ def load_tracker(profile: str) -> dict:
 def save_tracker(profile: str, data: dict):
     path = tracker_path(profile)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    atomic_write_json(path, data)  # JH-010
 
 
 def update_platform_status(profile: str, platform_id: str, status: str = None, notes: str = None) -> dict:
+    with file_lock(tracker_path(profile)):  # whole read-modify-write (JH-010)
+        return _update_platform_status_unlocked(profile, platform_id, status, notes)
+
+
+def _update_platform_status_unlocked(profile: str, platform_id: str, status: str = None, notes: str = None) -> dict:
     data = load_tracker(profile)
     entry = data["platforms"].setdefault(platform_id, {"status": "Not Started", "notes": "", "updated": ""})
     if status is not None:

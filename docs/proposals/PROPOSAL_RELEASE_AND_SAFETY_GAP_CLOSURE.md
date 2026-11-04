@@ -363,3 +363,9 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 **Not done:** typed outcomes (§7.1, GAP-JH-06) change what the Apply column shows for hand-finished forms, so they're held for owner decision JH-D07 in `docs/GAP_AUDIT.md`.
 
 **Next concrete step:** once JH-D07 is answered, add `ApplyState`/`ApplyOutcome` and the compatibility serializer from §14.
+
+### 2026-11-04 — JH-WP3 step 1: atomic, locked persistence (JH-010)
+
+**Verified:** `atomic_io.py` implements the §9 write contract (unique temp file in the target directory, fsync, mode kept, `os.replace`, residue removed on failure) and a cross-process per-file lock covering the whole read-modify-write. Every audited write path now uses it (see JH-010 in `docs/GAP_AUDIT.md`). `local_sync.push_jobs` rewrites under the lock instead of appending, so a crash can't tear a row. Columns a user added in their spreadsheet are kept rather than raising. Six new storage tests (GAP-JH-07 concurrent writers, GAP-JH-08 fault before replace, mode and columns, corrupt JSON, locked `mark_applied`, admin PATCH routes) pass, and removing each invariant fails at least two of them.
+
+**Next concrete step:** a stable `Job ID` (normalized source plus canonical URL) with ETag/409 for the index-addressed admin PATCH routes. That changes the admin API and its JavaScript, and needs no owner decision.

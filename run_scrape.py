@@ -13,6 +13,8 @@ import json
 import argparse
 from datetime import datetime
 
+from atomic_io import atomic_write_json
+
 from scraper import scrape_all_jobs
 from matcher import match_jobs
 from storage import push_jobs, cleanup_stale_jobs
@@ -195,8 +197,7 @@ def run():
     # Save matched results locally
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     out = DATA_DIR / f"matched_jobs_{timestamp}.json"
-    with open(out, "w") as f:
-        json.dump(matched, f, indent=2)
+    atomic_write_json(out, matched)
     print(f"\n  Saved matched jobs: {out}")
 
     # ── Step 3: Push to spreadsheet ──────────────────────

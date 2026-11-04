@@ -33,6 +33,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
 
+from atomic_io import (atomic_write_csv, atomic_write_json, atomic_write_text,
+                       file_lock, locked_update_csv, locked_update_json)
+
 app = Flask(__name__, static_folder="static")
 
 # Deployed mode = multi-user with expandable sections + profile creation
@@ -80,11 +83,8 @@ def _read_csv(filepath, columns=None):
 
 
 def _write_csv(filepath, rows, columns):
-    """Write list of dicts to CSV."""
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
+    """Atomically write list of dicts to CSV (JH-010); keeps user-added columns."""
+    atomic_write_csv(filepath, rows, columns)
 
 
 def _load_profile_module(name):
@@ -121,12 +121,8 @@ def _read_run_log(profile):
 
 
 def _append_run_log(profile, entry):
-    log = _read_run_log(profile)
-    log.append(entry)
-    path = _run_log_path(profile)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(log, f, indent=2)
+    """Locked read-append-write so two finishing scrapes can't drop an entry."""
+    locked_update_json(_run_log_path(profile), list, lambda log: log + [entry])
 
 
 # ── Static files (UI) ───────────────────────────────────
@@ -219,7 +215,7 @@ def update_search_settings(name):
             )
         content = new_content
 
-    profile_file.write_text(content)
+    atomic_write_text(profile_file, content)
     return jsonify({"ok": True})
 
 
@@ -279,17 +275,22 @@ def update_job(profile, index):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    rows = _read_csv(filepath)
-    if index < 0 or index >= len(rows):
-        return jsonify({"error": "Invalid index"}), 400
-
     updates = request.json
-    for key, value in updates.items():
-        if key in columns:
-            rows[index][key] = value
+    result = {}
 
-    _write_csv(filepath, rows, columns)
-    return jsonify({"ok": True, "row": rows[index]})
+    def mutate(rows):
+        if index < 0 or index >= len(rows):
+            return None
+        for key, value in updates.items():
+            if key in columns:
+                rows[index][key] = value
+        result["row"] = rows[index]
+        return rows
+
+    locked_update_csv(filepath, columns, mutate)  # whole read-modify-write under one lock (JH-010)
+    if "row" not in result:
+        return jsonify({"error": "Invalid index"}), 400
+    return jsonify({"ok": True, "row": result["row"]})
 
 
 @app.route("/api/jobs/<profile>/bulk", methods=["PATCH"])
@@ -302,21 +303,22 @@ def bulk_update_jobs(profile):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    rows = _read_csv(filepath)
     body = request.json
     indices = body.get("indices", [])
     updates = body.get("updates", {})
+    counter = {"n": 0}
 
-    count = 0
-    for idx in indices:
-        if 0 <= idx < len(rows):
-            for key, value in updates.items():
-                if key in columns:
-                    rows[idx][key] = value
-            count += 1
+    def mutate(rows):
+        for idx in indices:
+            if 0 <= idx < len(rows):
+                for key, value in updates.items():
+                    if key in columns:
+                        rows[idx][key] = value
+                counter["n"] += 1
+        return rows
 
-    _write_csv(filepath, rows, columns)
-    return jsonify({"ok": True, "updated": count})
+    locked_update_csv(filepath, columns, mutate)  # JH-010
+    return jsonify({"ok": True, "updated": counter["n"]})
 
 
 @app.route("/api/jobs/<profile>/stats")
@@ -446,8 +448,8 @@ def get_form_config(profile):
 def update_form_config(profile):
     config_path = _profile_dir(profile) / "form_config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        json.dump(request.json, f, indent=2)
+    with file_lock(config_path):
+        atomic_write_json(config_path, request.json)
     return jsonify({"ok": True})
 
 
@@ -741,8 +743,7 @@ LOCATION_FILTER = {{
 }}
 '''
 
-    with open(profile_file, "w") as f:
-        f.write(content)
+    atomic_write_text(profile_file, content)
 
     # Create output directories
     out = OUTPUT_DIR / name
@@ -941,8 +942,7 @@ def _write_role_profiles(name, roles):
         # No existing block — append
         result = src_lines + ["\n"] + new_lines
 
-    with open(profile_file, "w") as f:
-        f.writelines(result)
+    atomic_write_text(profile_file, "".join(result))
 
 
 # ── Resume upload ────────────────────────────────────

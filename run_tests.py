@@ -1171,6 +1171,136 @@ def test_easy_apply_refuses_if_page_changes_after_confirm():
     assert "Submit application" not in page.clicks, f"clicked Submit after the page changed: {page.clicks}"
 
 
+def test_atomic_write_fault_keeps_original():
+    """JH-010 / GAP-JH-08: a failure before os.replace leaves the old file intact, no temp residue."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    atomic_io.atomic_write_csv(target, [{"Job Title": "Original"}], ["Job Title"])
+    before = target.read_bytes()
+    real = atomic_io.os.replace
+    def boom(*a, **k):
+        raise OSError("simulated crash before replace")
+    atomic_io.os.replace = boom
+    try:
+        try:
+            atomic_io.atomic_write_csv(target, [{"Job Title": "New"}], ["Job Title"])
+            raise AssertionError("write should have raised")
+        except OSError:
+            pass
+    finally:
+        atomic_io.os.replace = real
+    assert target.read_bytes() == before, "original file was modified"
+    leftovers = [p.name for p in d.iterdir() if p.name != "jobs.csv"]
+    assert leftovers == [], f"temp residue left behind: {leftovers}"
+
+
+def test_atomic_write_keeps_permissions_and_user_columns():
+    """JH-010: rewrites keep the file mode and any column the user added."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    atomic_io.atomic_write_csv(target, [{"Job Title": "A", "My Notes": "keep me"}], ["Job Title"])
+    os.chmod(target, 0o600)
+    rows = atomic_io.read_csv_rows(target)
+    rows[0]["Job Title"] = "A2"
+    atomic_io.atomic_write_csv(target, rows, ["Job Title"])
+    assert (target.stat().st_mode & 0o777) == 0o600, oct(target.stat().st_mode & 0o777)
+    again = atomic_io.read_csv_rows(target)
+    assert again == [{"Job Title": "A2", "My Notes": "keep me"}], again
+
+
+def test_locked_update_concurrent_writers():
+    """JH-010 / GAP-JH-07: concurrent read-modify-writes on different rows lose nothing."""
+    import atomic_io, threading
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    cols = ["URL", "Count"]
+    atomic_io.atomic_write_csv(target, [{"URL": f"u{i}", "Count": "0"} for i in range(8)], cols)
+    errors = []
+    def worker(i):
+        try:
+            for _ in range(25):
+                def bump(rows, i=i):
+                    rows[i]["Count"] = str(int(rows[i]["Count"]) + 1)
+                    return rows
+                atomic_io.locked_update_csv(target, cols, bump)
+        except Exception as e:  # surfaced below
+            errors.append(repr(e))
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads: t.start()
+    for t in threads: t.join(60)
+    assert not errors, errors
+    counts = [r["Count"] for r in atomic_io.read_csv_rows(target)]
+    assert counts == ["25"] * 8, f"lost updates: {counts}"
+
+
+def test_corrupt_json_is_not_overwritten():
+    """JH-010: a corrupt JSON file fails visibly instead of being replaced by the default."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "run_log.json"
+    target.write_text("{not json")
+    try:
+        atomic_io.locked_update_json(target, list, lambda log: log + [{"x": 1}])
+        raise AssertionError("corrupt JSON was silently replaced")
+    except json.JSONDecodeError:
+        pass
+    assert target.read_text() == "{not json", "corrupt file was modified"
+
+
+def test_local_sync_mark_applied_locked_and_keeps_columns():
+    """JH-010: local_sync.mark_applied rewrites atomically under jobs.csv.lock and keeps user columns."""
+    import local_sync
+    jobs = local_sync.JOBS_FILE
+    jobs.parent.mkdir(parents=True, exist_ok=True)
+    header = list(local_sync.SHEET_COLUMNS) + ["My Notes"]
+    row = {c: "" for c in header}
+    row.update({"Job Title": "Synthetic Role", "URL": "https://example.test/1", "Apply": "Y", "My Notes": "keep me"})
+    import atomic_io
+    atomic_io.atomic_write_csv(jobs, [row], header)
+    import io, contextlib
+    with contextlib.redirect_stdout(io.StringIO()):
+        local_sync.mark_applied(None, 0, "synthetic.pdf")
+    out = atomic_io.read_csv_rows(jobs)
+    assert out[0]["Apply"] == "Done" and out[0]["Resume Version"] == "synthetic.pdf", out[0]
+    assert out[0]["My Notes"] == "keep me", "user column lost"
+    assert Path(f"{jobs}.lock").exists(), "mark_applied did not take the jobs.csv lock"
+    assert str(jobs.resolve()).startswith(str(TEST_HOME.resolve())), f"wrote outside the temp home: {jobs.resolve()}"
+
+
+def test_admin_job_patch_routes_locked():
+    """JH-010: PATCH /api/jobs (single + bulk) still work through the locked rewrite; bad index -> 400."""
+    code = (
+        "import sys, json, tempfile, pathlib; sys.path.insert(0, 'admin'); import server, atomic_io\n"
+        "out = pathlib.Path(tempfile.mkdtemp(prefix='jh-admin-'))\n"
+        "import atexit, shutil; atexit.register(shutil.rmtree, out, ignore_errors=True)\n"
+        "server.OUTPUT_DIR = out\n"
+        "jobs = out / 'synthetic' / 'jobs.csv'\n"
+        "rows = [{c: '' for c in server.SHEET_COLUMNS} for _ in range(3)]\n"
+        "rows[0]['Job Title'] = 'A'; rows[1]['Job Title'] = 'B'; rows[2]['Job Title'] = 'C'\n"
+        "atomic_io.atomic_write_csv(jobs, [dict(r, **{'My Notes': 'keep'}) for r in rows], server.SHEET_COLUMNS)\n"
+        "c = server.app.test_client()\n"
+        "r1 = c.patch('/api/jobs/synthetic/1', json={'Apply': 'Y', 'Not A Column': 'x'})\n"
+        "r2 = c.patch('/api/jobs/synthetic/9', json={'Apply': 'Y'})\n"
+        "r3 = c.patch('/api/jobs/synthetic/bulk', json={'indices': [0, 2, 7], 'updates': {'Notes': 'n'}})\n"
+        "final = atomic_io.read_csv_rows(jobs)\n"
+        "print(json.dumps({'r1': [r1.status_code, r1.get_json()['row']['Apply']], 'r2': r2.status_code,\n"
+        "  'r3': [r3.status_code, r3.get_json()['updated']], 'apply': [x['Apply'] for x in final],\n"
+        "  'notes': [x['Notes'] for x in final], 'mine': [x['My Notes'] for x in final],\n"
+        "  'bogus': 'Not A Column' in final[1], 'lock': (jobs.parent / 'jobs.csv.lock').exists()}))\n"
+    )
+    proc, _ = _run_isolated_python(code, {"PYTHONPATH": str(ROOT) + os.pathsep + str(ROOT / "admin")})
+    if "No module named 'flask'" in proc.stderr:
+        raise SkipTest("flask not installed")
+    assert proc.returncode == 0, f"admin test failed: {proc.stderr[-500:]}"
+    r = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert r["r1"] == [200, "Y"] and r["r2"] == 400, r
+    assert r["r3"] == [200, 2], r
+    assert r["apply"] == ["", "Y", ""] and r["notes"] == ["n", "", "n"], r
+    assert r["mine"] == ["keep"] * 3 and r["bogus"] is False and r["lock"] is True, r
+
+
 # ═══════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════
@@ -1221,6 +1351,12 @@ def main():
         runner.run("CSV dedup", test_csv_dedup)
         runner.run("CSV column order", test_csv_column_order)
         runner.run("Stale job cleanup", test_stale_cleanup)
+        runner.run("Atomic write: fault keeps original (JH-010)", test_atomic_write_fault_keeps_original)
+        runner.run("Atomic write: mode + user columns kept (JH-010)", test_atomic_write_keeps_permissions_and_user_columns)
+        runner.run("Locked update: concurrent writers (JH-010)", test_locked_update_concurrent_writers)
+        runner.run("Corrupt JSON not overwritten (JH-010)", test_corrupt_json_is_not_overwritten)
+        runner.run("local_sync.mark_applied locked (JH-010)", test_local_sync_mark_applied_locked_and_keeps_columns)
+        runner.run("Admin job PATCH routes locked (JH-010)", test_admin_job_patch_routes_locked)
 
     if run_api:
         print(f"\n── Web Search Tests ──")

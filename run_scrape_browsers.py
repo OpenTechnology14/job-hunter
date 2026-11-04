@@ -19,6 +19,8 @@ from dataclasses import dataclass, asdict
 
 import requests
 
+from atomic_io import atomic_write_csv, file_lock
+
 try:
     from playwright.sync_api import sync_playwright
     HAS_PLAYWRIGHT = True
@@ -310,25 +312,26 @@ def run_browser_scrape():
 
     # Write CSV
     today = datetime.now().strftime("%Y-%m-%d")
-    with open(BROWSER_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=BROWSER_COLUMNS)
-        writer.writeheader()
-        for j in filtered:
-            writer.writerow({
-                "Job Title": j.title,
-                "Company": j.company,
-                "Location": j.location,
-                "Work Type": j.work_type,
-                "Salary": j.salary,
-                "Role Category": j.role_category,
-                "Source": j.source,
-                "Easy Apply": j.easy_apply,
-                "Direct Apply Link": j.direct_apply_link,
-                "Job URL": j.job_url,
-                "Date Found": today,
-                "Apply": "",
-                "Notes": "",
-            })
+    rows = []
+    for j in filtered:
+        rows.append({
+            "Job Title": j.title,
+            "Company": j.company,
+            "Location": j.location,
+            "Work Type": j.work_type,
+            "Salary": j.salary,
+            "Role Category": j.role_category,
+            "Source": j.source,
+            "Easy Apply": j.easy_apply,
+            "Direct Apply Link": j.direct_apply_link,
+            "Job URL": j.job_url,
+            "Date Found": today,
+            "Apply": "",
+            "Notes": "",
+        })
+    # Atomic replace under the same lock the admin panel uses (JH-010)
+    with file_lock(BROWSER_CSV):
+        atomic_write_csv(BROWSER_CSV, rows, BROWSER_COLUMNS)
 
     print(f"\n{'='*60}")
     print(f"  ✅ {len(filtered)} jobs saved to {BROWSER_CSV}")

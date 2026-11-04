@@ -125,6 +125,7 @@ with `python quality_filter.py --profile <p> --clean [--dry-run]` — approved
 ## 3. Storage Layer (`storage.py`, `local_sync.py`, `sheets_sync.py`)
 
 ### Local CSV mode (default)
+- **All writes are atomic and locked (JH-010):** use `atomic_io` (`atomic_write_csv/json/text`, `locked_update_csv/json`, `file_lock`), never a bare `open(path, "w")`. The lock file is `<file>.lock`, shared by the scraper, the apply flow and the admin panel
 - `local_sync.py` reads/writes CSV files using Python's `csv` module
 - Deduplication by URL: existing jobs are not overwritten
 - New jobs are appended to the bottom

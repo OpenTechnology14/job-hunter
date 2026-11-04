@@ -17,6 +17,7 @@ import re
 from email.utils import parsedate_to_datetime
 
 from config import SHEET_COLUMNS, DATA_DIR, PROFILE_DIR, LOCATION_FILTER, SEARCH_SETTINGS
+from atomic_io import atomic_write_csv, file_lock
 
 
 def _build_location_set() -> set:
@@ -296,9 +297,7 @@ JOBS_FILE = PROFILE_DIR / "jobs.csv"
 def _ensure_file():
     """Create the CSV with headers if it doesn't exist."""
     if not JOBS_FILE.exists():
-        with open(JOBS_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(SHEET_COLUMNS)
+        atomic_write_csv(JOBS_FILE, [], SHEET_COLUMNS)
         print(f"  📄 Created: {JOBS_FILE}")
 
 
@@ -311,11 +310,9 @@ def _read_all_rows() -> list[dict]:
 
 
 def _write_all_rows(rows: list[dict]):
-    """Overwrite the CSV with the given rows."""
-    with open(JOBS_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=SHEET_COLUMNS)
-        writer.writeheader()
-        writer.writerows(rows)
+    """Atomically overwrite the CSV (JH-010). Columns the user added in their
+    spreadsheet are kept. Callers hold file_lock(JOBS_FILE)."""
+    atomic_write_csv(JOBS_FILE, rows, SHEET_COLUMNS)
 
 
 def _get_existing_urls() -> set:
@@ -335,7 +332,7 @@ def _get_existing_keys() -> tuple[set, set]:
     return urls, keys
 
 
-def cleanup_stale_jobs(**kwargs):
+def _cleanup_stale_jobs_unlocked(**kwargs):
     """
     Remove old unapproved jobs from the CSV based on job posting date.
 
@@ -403,7 +400,7 @@ def cleanup_stale_jobs(**kwargs):
     return removed
 
 
-def push_jobs(jobs: list[dict], **kwargs):
+def _push_jobs_unlocked(jobs: list[dict], **kwargs):
     """Append matched jobs to the local CSV.
     Skips duplicates by URL and by normalized title+company (the same
     posting scraped from two boards has two URLs but one title+company)."""
@@ -458,11 +455,10 @@ def push_jobs(jobs: list[dict], **kwargs):
         print("  No new jobs to add.")
         return
 
-    # Append to CSV
-    with open(JOBS_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=SHEET_COLUMNS)
-        for row in new_rows:
-            writer.writerow(row)
+    # Rewrite atomically under the lock instead of appending in place, so a
+    # crash mid-write can't leave a torn row and a concurrent admin edit
+    # can't be lost (JH-010).
+    _write_all_rows(_read_all_rows() + new_rows)
 
     print(f"  ✅ Added {len(new_rows)} jobs to {JOBS_FILE.name}")
 
@@ -499,7 +495,7 @@ def pull_ready_jobs(**kwargs) -> list[dict]:
     return ready
 
 
-def mark_applied(ws_unused, row_index, resume_used: str = ""):
+def _mark_applied_unlocked(ws_unused, row_index, resume_used: str = ""):
     """
     Mark a job as applied in the local CSV.
     row_index is csv_row_index from pull_ready_jobs.
@@ -516,6 +512,27 @@ def mark_applied(ws_unused, row_index, resume_used: str = ""):
         if resume_used:
             rows[idx]["Resume Version"] = resume_used
         _write_all_rows(rows)
+
+
+
+# ── Locked entry points (JH-010) ─────────────────────────
+# The scraper, the apply flow and the admin panel can touch jobs.csv at the
+# same time. Each public mutator holds the file lock for its whole
+# read-modify-write; the admin panel uses the same `jobs.csv.lock`.
+
+def cleanup_stale_jobs(**kwargs):
+    with file_lock(JOBS_FILE):
+        return _cleanup_stale_jobs_unlocked(**kwargs)
+
+
+def push_jobs(jobs: list[dict], **kwargs):
+    with file_lock(JOBS_FILE):
+        return _push_jobs_unlocked(jobs, **kwargs)
+
+
+def mark_applied(ws_unused, row_index, resume_used: str = ""):
+    with file_lock(JOBS_FILE):
+        return _mark_applied_unlocked(ws_unused, row_index, resume_used)
 
 
 def sync_scraped_to_sheet(input_file: str = None):

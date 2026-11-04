@@ -171,6 +171,9 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 10.4 | Aggregators | Web search on | "1,000+ … jobs" listing pages dropped |
 | 10.5 | Cross-source dedupe | Same posting on two boards | Only one row kept (title+company key) |
 | 10.6 | Retro-clean | `python quality_filter.py --profile <p> --clean --dry-run` | Lists removable rows; approved (Y/Done) rows untouched |
+| 10.7 | Atomic write fault (JH-010) | `python run_tests.py --storage` | Simulated crash before `os.replace`: original intact, no temp residue |
+| 10.8 | Concurrent writers (JH-010) | `--storage` | 8 threads × 25 locked updates on different rows: no lost update |
+| 10.9 | Columns and mode kept (JH-010) | `--storage` | A column you added in Excel and the file's permissions survive a rewrite; corrupt JSON fails visibly |
 
 ---
 
