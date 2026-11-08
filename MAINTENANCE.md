@@ -228,6 +228,7 @@ Profile files are executed as Python code. Never load untrusted profile files. I
 - Scrape buttons spawn `run_scrape.py` as subprocess in background thread
 - No database - filesystem is the database
 - No authentication - localhost only
+- **Cross-origin writes blocked:** every POST/PUT/PATCH/DELETE needs an allowed `Origin` (or `Referer`); requests with neither (curl, scripts) pass. Allow-list: loopback on port 5175 plus `ADMIN_ALLOWED_ORIGINS`. New write routes are covered automatically by the test that sweeps the URL map
 
 ### Two modes
 - **Local** (default): Profile dropdown, single-user view

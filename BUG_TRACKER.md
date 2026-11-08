@@ -26,6 +26,7 @@ Report bugs via [GitHub Issues](https://github.com/OpenTechnology14/job-hunter/i
 | 7 | 2026-11-07 | `GET /api/resumes/<profile>/..` crashed with a 500 (`IsADirectoryError`) | Serve only an existing regular file; 404 otherwise |
 | 10 | 2026-11-07 | **High:** `DELETE /api/profiles/__init__` deleted `profiles/__init__.py`, and the write routes could edit or delete the `example_profile` template | Non-GET requests on the reserved names return 403 |
 | 11 | 2026-11-07 | Non-numeric `stale_days`/`filter_min_budget` or role salaries crashed with a 500 | Return 400 with the field name |
+| 13 | 2026-11-08 | **High (security):** the admin panel had no cross-site write protection. A web page open in the same browser could send a `multipart/form-data` upload to the local admin panel (browsers send that without a CORS preflight) and replace a resume used by auto-apply | Every POST/PUT/PATCH/DELETE must come from an allowed Origin (Referer if Origin is absent): `localhost`/`127.0.0.1`/`[::1]` on port 5175, plus `ADMIN_ALLOWED_ORIGINS`; otherwise 403 |
 | 12 | 2026-11-07 | `PUT /api/form-config/<profile>` accepted any JSON (a list, or a string for `custom_fields`), which later breaks auto-fill | Require an object whose `custom_fields`/`select_defaults` are lists; 400 otherwise |
 
 ---

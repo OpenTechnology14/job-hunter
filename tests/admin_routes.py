@@ -298,6 +298,41 @@ def run():
         r = c.open(url, method=method, **kw)
         return r.status_code, r.get_json(silent=True)
 
+    # ── cross-origin write protection (WM-JH-UPLOAD-ORIGIN-01) ──
+    EVIL = {"Origin": "https://evil.example"}
+    resume = root / "output" / "synthetic" / "resumes" / "synthetic.pdf"
+    def upload(headers, name="synthetic.pdf", data=b"%PDF-1.4 attacker"):
+        return c.post("/api/resumes/synthetic/upload", headers=headers, content_type="multipart/form-data",
+                      data={"file": (io.BytesIO(data), name)}).status_code
+    def cross_origin_upload_blocked():
+        before = resume.read_bytes()
+        assert upload(EVIL) == 403, "cross-origin multipart upload must be 403"
+        assert resume.read_bytes() == before, "resume was overwritten"
+        assert upload({"Referer": "https://evil.example/page"}) == 403, "cross-site Referer without Origin must be 403"
+        assert upload({"Origin": "null"}) == 403, "opaque 'null' origin must be 403"
+        assert upload({"Origin": "http://localhost:3000"}) == 403, "another local app (other port) must be 403"
+        assert resume.read_bytes() == before, "resume was overwritten"
+    case("(origin)", "cross-origin upload rejected, resume untouched", cross_origin_upload_blocked)
+    def same_origin_allowed():
+        assert upload({"Origin": "http://localhost:5175"}, "same-origin.pdf", PDF_BYTES) == 200, "same-origin localhost"
+        assert upload({"Origin": "http://127.0.0.1:5175", "Referer": "http://127.0.0.1:5175/"}, "same-origin.pdf", PDF_BYTES) == 200, "same-origin 127.0.0.1"
+        assert upload({}, "script.pdf", PDF_BYTES) == 200, "no Origin/Referer (non-browser client) is allowed"
+        for f in ("same-origin.pdf", "script.pdf"):
+            (root / "output" / "synthetic" / "resumes" / f).unlink()
+    case("(origin)", "same-origin and non-browser uploads pass", same_origin_allowed)
+    def env_allow_list():
+        import os as _os
+        _os.environ["ADMIN_ALLOWED_ORIGINS"] = "https://jobs.example.test, https://other.example.test/"
+        try:
+            assert upload({"Origin": "https://jobs.example.test"}, "proxied.pdf", PDF_BYTES) == 200, "env-listed origin"
+            assert upload({"Origin": "https://other.example.test"}, "proxied.pdf", PDF_BYTES) == 200, "trailing slash normalized"
+            assert upload(EVIL) == 403, "still blocks unlisted origins"
+        finally:
+            del _os.environ["ADMIN_ALLOWED_ORIGINS"]
+            (root / "output" / "synthetic" / "resumes" / "proxied.pdf").unlink(missing_ok=True)
+        assert upload({"Origin": "https://jobs.example.test"}) == 403, "removed from env -> blocked again"
+    case("(origin)", "ADMIN_ALLOWED_ORIGINS extends the allow-list", env_allow_list)
+
     rt = cover("PATCH", "/api/profiles/<name>/search-settings")
     def settings_ok():
         s, b = send("PATCH", "/api/profiles/synthetic/search-settings", json={"web_search": True, "stale_days": 7, "not_allowed": 1})
@@ -436,6 +471,24 @@ def run():
             s, _ = send("DELETE", f"/api/profiles/{name}")
             assert s == 403 and (profiles / f"{name}.py").exists(), f"{name}: {s}"
     case(rt, "reserved files (__init__, example template) can't be deleted", reserved)
+
+    def every_mutating_route_checked():
+        # Runs last: if the guard were missing these requests would really execute.
+        server.threading.Thread = lambda *a, **k: type('T', (), {'start': lambda self: None})()
+        server.subprocess.run = lambda *a, **k: None
+        fill = {"profile": "synthetic", "name": "synthetic", "index": "0", "role_id": "x",
+                "platform_id": "x", "filename": "x.pdf"}
+        missed = []
+        for rule in server.app.url_map.iter_rules():
+            for m in sorted(rule.methods & {"POST", "PUT", "PATCH", "DELETE"}):
+                url = re.sub(r"<(?:\w+:)?(\w+)>", lambda g: fill[g.group(1)], rule.rule)
+                status = c.open(url, method=m, headers=EVIL, json={}).status_code
+                if status != 403:
+                    missed.append(f"{m} {rule.rule} -> {status}")
+        assert not missed, missed
+        assert get("/api/jobs/synthetic")[0] == 200, "reads are unaffected"
+        assert c.get("/api/jobs/synthetic", headers=EVIL).status_code == 200, "cross-origin GET is not blocked (reads only)"
+    case("(origin)", "all 15 mutating routes reject a cross-site Origin", every_mutating_route_checked)
 
     # ── path safety across profile-scoped GET routes ──
     case("(path safety)", "profile segment can't reach outside output/", path_safety(get))
