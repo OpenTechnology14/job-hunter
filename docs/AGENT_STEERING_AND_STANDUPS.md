@@ -189,6 +189,8 @@ If used, OpenClaw is another worker runtime. Its workspace `AGENTS.md` can diffe
 
 ## Validation and owner merge instructions
 
+**Merge rule (JH-D08, 2026-11-08):** a PR that contains any commit created before 2026-11-07, when GitHub email privacy was turned on, must be **squash-merged**, never rebased or merged with a merge commit. Squashing writes one new commit authored by the merger (now the noreply address), so older commit metadata never reaches `main`. Check with `git log origin/main..<branch> --format='%ae %ce %ad'`; when in doubt, squash. This applies to force merges too.
+
 Owner policy, 2026-10-25: choose verification for what changed. For documentation and prompt-only changes, run the local document, link, format and generated-file checks; a complete application build or hosted CI run is not automatically required. For executable code, runtime configuration, security or data changes, use the project's relevant tests and release rules. Report exactly which checks ran, failed or were omitted and why.
 
 An explicit owner instruction such as `force merge PR #123` authorizes bypassing that PR's CI/review gate where GitHub permissions allow it. Record the instruction and outstanding checks in the existing PR/task. Keep failed checks failed and unrun checks unrun; an override is a release decision, not passing test evidence. General permission to build a feature or install this workflow does not authorize bypassing every future merge. Never use a force merge instruction as permission to force-push, erase work, or change unrelated repository protections.
