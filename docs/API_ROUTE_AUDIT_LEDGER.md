@@ -1,6 +1,6 @@
 # Flask API Route Audit Ledger
 
-All routes are defined in `admin/server.py`. At audit time there was no in-application authentication, authorization, or CSRF enforcement. The local server binds to `127.0.0.1`, which reduces exposure but does not make the route set safe for hosted mode.
+All routes are defined in `admin/server.py`. **Contract tests:** `tests/admin_routes.py` covers every GET route (phase 1, 2026-11-07); the mutating routes are listed there as phase-2 pending, and a check fails if a route here and in the server ever differ. Every `<profile>`/`<name>` segment is validated before routing (400 if invalid). At audit time there was no in-application authentication, authorization, or CSRF enforcement. The local server binds to `127.0.0.1`, which reduces exposure but does not make the route set safe for hosted mode.
 
 | Method | Path | Operation | Hosted risk/gate |
 |---|---|---|---|

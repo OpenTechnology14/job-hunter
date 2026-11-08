@@ -226,3 +226,16 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 14.5 | Single-use, scoped token | Replay a token; use it for another job; change the page fingerprint | Each refused; exactly one click overall (GAP-JH-05) |
 | 14.6 | Expiry and invalidation | Advance the clock past the TTL; invalidate (navigation); issue a newer confirmation | Old tokens refused; any refused attempt voids the live token (fail-closed) |
 | 14.7 | Page change after confirm | The page URL changes between the SUBMIT answer and the click | Not submitted; no Submit click |
+
+---
+
+## 15. Admin Route Contracts (automated, offline)
+
+`python run_tests.py --routes` (also part of the default run). `tests/admin_routes.py` copies the code into a temporary project tree with a synthetic profile and fixtures, then drives the Flask test client, so the real `profiles/` and `output/` are never touched.
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 15.1 | Every GET route (18) | Success shape, 404 for unknown profiles where the route has one, filters work |
+| 15.2 | Profile segment `%2E%2E` on profile-scoped routes | 400; nothing from outside `output/` is returned |
+| 15.3 | Resume filename `..` | 404, not a 500 |
+| 15.4 | Ledger check | The server's routes equal `docs/API_ROUTE_AUDIT_LEDGER.md`; each is covered or listed as phase-2 pending |

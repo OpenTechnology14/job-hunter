@@ -13,6 +13,7 @@ Report bugs via [GitHub Issues](https://github.com/OpenTechnology14/job-hunter/i
 | 3 | Low | Browser Apply | Sites with heavy JavaScript SPAs may not detect form fields correctly | Use `--dry-run` to verify, then apply manually on those sites |
 | 4 | Low | Admin Panel | Port 5175 sometimes stays bound after server crash | Run `lsof -ti:5175 \| xargs kill -9` then restart |
 | 5 | Low | CSV | Excel may mangle URLs or dates when opening CSV directly | Use "Import" instead of "Open" in Excel, or use Google Sheets |
+| 8 | Low | Admin Panel | `GET /api/ai-training/<profile>` writes `ai_training.json` (a read route with a side effect: it persists newly seeded platforms) | Harmless locally; recorded by the route tests as a characterization |
 
 ---
 
@@ -20,7 +21,8 @@ Report bugs via [GitHub Issues](https://github.com/OpenTechnology14/job-hunter/i
 
 | # | Version | Description | Fix |
 |---|---------|-------------|-----|
-| — | — | No fixes logged yet | — |
+| 6 | 2026-11-07 | **High (security):** a crafted `<profile>` segment such as `%2E%2E` resolved outside `output/`, so profile-scoped admin routes could read, and through PUT/upload/delete write, files one level up | `before_request` check: profile/name must match `^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$` (400 otherwise); filenames can't start with `.` or contain a separator. Found by `tests/admin_routes.py` (JH-013) |
+| 7 | 2026-11-07 | `GET /api/resumes/<profile>/..` crashed with a 500 (`IsADirectoryError`) | Serve only an existing regular file; 404 otherwise |
 
 ---
 

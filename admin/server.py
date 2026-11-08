@@ -125,6 +125,26 @@ def _append_run_log(profile, entry):
     locked_update_json(_run_log_path(profile), list, lambda log: log + [entry])
 
 
+# ── Path-segment validation (trust boundary) ────────────
+# Every <profile>/<name> segment becomes a directory under output/ or a file
+# under profiles/. Without this check "%2E%2E" resolved outside output/ and
+# could read or write files there (found by tests/admin_routes.py, JH-013).
+
+PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
+
+
+@app.before_request
+def _validate_path_segments():
+    args = request.view_args or {}
+    for key in ("profile", "name"):
+        if key in args and not PROFILE_NAME_RE.fullmatch(str(args[key])):
+            return jsonify({"error": f"Invalid {key}"}), 400
+    filename = args.get("filename")
+    if filename is not None and request.endpoint != "serve_static":
+        if filename.startswith(".") or "/" in filename or "\\" in filename:
+            return jsonify({"error": "Not found"}), 404
+
+
 # ── Static files (UI) ───────────────────────────────────
 
 @app.route("/")
@@ -488,7 +508,7 @@ def list_resumes(profile):
 @app.route("/api/resumes/<profile>/<filename>")
 def serve_resume(profile, filename):
     resume_path = _profile_dir(profile) / "resumes" / filename
-    if not resume_path.exists():
+    if not resume_path.is_file():
         return jsonify({"error": "Not found"}), 404
     return send_file(resume_path, mimetype="application/pdf")
 

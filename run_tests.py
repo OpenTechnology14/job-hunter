@@ -16,6 +16,7 @@ Usage:
     python run_tests.py --matcher        # Matcher logic tests only
     python run_tests.py --storage        # CSV storage tests only
     python run_tests.py --safety         # Submission-safety tests only (offline, fake page)
+    python run_tests.py --routes         # Admin route contract tests (offline, temp project tree)
     python run_tests.py --all            # Every group, offline + live
     python run_tests.py -v               # Verbose output
 """
@@ -1301,6 +1302,22 @@ def test_admin_job_patch_routes_locked():
     assert r["mine"] == ["keep"] * 3 and r["bogus"] is False and r["lock"] is True, r
 
 
+def test_admin_route_contracts():
+    """JH-013 phase 1: every GET route against a temp project tree, plus path safety and the ledger check."""
+    import subprocess
+    try:
+        import flask  # noqa: F401
+    except ImportError:
+        raise SkipTest("flask not installed")
+    proc = subprocess.run([sys.executable, str(ROOT / "tests" / "admin_routes.py")],
+                          capture_output=True, text=True, timeout=120, cwd=str(TEST_HOME))
+    assert proc.returncode == 0, f"harness crashed: {proc.stderr[-600:]}"
+    data = json.loads(proc.stdout.strip().splitlines()[-1])
+    failed = [f"{r['route']} | {r['case']}: {r.get('error', '')[:160]}" for r in data["results"] if not r["ok"]]
+    assert not failed, "\n    ".join(failed)
+    assert data["covered"] + data["pending"] == 33, data
+
+
 # ═══════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════
@@ -1317,6 +1334,7 @@ def main():
     run_storage = "--storage" in args or "--all" in args or not args
     run_browser = "--browser" in args or "--all" in args
     run_safety = "--safety" in args or "--all" in args or not args
+    run_routes = "--routes" in args or "--all" in args or not args
 
     runner = TestRunner(verbose=verbose)
 
@@ -1382,6 +1400,10 @@ def main():
         runner.run("Guard: single-use, job/page-scoped (GAP-JH-05)", test_guard_token_single_use_and_scoped)
         runner.run("Guard: expiry and invalidation (JH-003)", test_guard_expiry_and_invalidation)
         runner.run("Easy Apply refuses after page change (JH-003)", test_easy_apply_refuses_if_page_changes_after_confirm)
+
+    if run_routes:
+        print(f"\n── Admin Route Contracts (offline, temp project tree) ──")
+        runner.run("Admin GET routes + path safety + ledger (JH-013)", test_admin_route_contracts)
 
     print(f"\n── Config Tests ──")
     runner.run("Admin server exists", test_admin_imports)
