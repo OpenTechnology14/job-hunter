@@ -267,6 +267,7 @@ All optional. Set in `.env` file (gitignored).
 | `ADZUNA_APP_ID` | Adzuna API (free tier available) |
 | `ADZUNA_APP_KEY` | Adzuna API key |
 | `GOOGLE_SHEET_ID` | Google Sheets mode — target sheet ID |
+| `ADMIN_ALLOWED_ORIGINS` | Extra origins allowed to make changes in the admin panel (comma-separated), e.g. a proxy domain. Loopback on port 5175 is always allowed |
 | `DEPLOYED` | Set to `1` for multi-user admin panel mode |
 
 ---

@@ -200,6 +200,53 @@ PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
 RESERVED_PROFILES = {"__init__", "example_profile"}
 
 
+# ── Cross-origin write protection (WM-JH-UPLOAD-ORIGIN-01) ───────────────
+# There is no CSRF-token layer, so this is the first line of defence.
+# Without it, any web page open in the same browser could POST a
+# multipart/form-data upload (a CORS "simple" request, sent without a
+# preflight) to the local admin panel and replace a resume. Browsers always
+# send Origin on cross-site POST/PUT/PATCH/DELETE; requests that carry
+# neither Origin nor Referer come from non-browser clients (curl, scripts),
+# which can't be driven cross-site, so they are allowed.
+
+MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+DEFAULT_ADMIN_ORIGINS = ("http://localhost:5175", "http://127.0.0.1:5175", "http://[::1]:5175")
+
+
+def _normalize_origin(value):
+    """'scheme://host[:port]' lowercased, or None if it isn't a usable origin."""
+    parts = urlsplit((value or "").strip())
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def allowed_origins(env=None):
+    """Default loopback origins plus ADMIN_ALLOWED_ORIGINS (comma-separated)."""
+    env = os.environ if env is None else env
+    extra = {_normalize_origin(o) for o in env.get("ADMIN_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+    return set(DEFAULT_ADMIN_ORIGINS) | {o for o in extra if o}
+
+
+@app.before_request
+def _check_origin():
+    if request.method not in MUTATING_METHODS:
+        return None
+    origin = request.headers.get("Origin")
+    if origin is None:
+        referer = request.headers.get("Referer")
+        if referer is None:
+            return None  # not a browser
+        origin = referer
+    if _normalize_origin(origin) not in allowed_origins():
+        return jsonify({
+            "error": "Cross-origin request blocked",
+            "detail": "This admin panel only accepts changes from its own page. "
+                      "Behind a proxy, add its origin to ADMIN_ALLOWED_ORIGINS.",
+        }), 403
+    return None
+
+
 @app.before_request
 def _validate_path_segments():
     args = request.view_args or {}

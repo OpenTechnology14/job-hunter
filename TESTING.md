@@ -245,3 +245,4 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 15.8 | Scrape POST (stubbed) | Starts `run_scrape.py --profile <p>` with the project's venv path and logs the run; 409 if running; a cross-site text/plain POST gets 415 and spawns nothing |
 | 15.9 | Profile/role/resume writes | Create (sanitized name, 409 duplicate, 400 bad name), role add/update/delete, upload (sanitized PDF name, non-PDF 400), deletes keep output data |
 | 15.10 | Bad input | Non-numeric settings or salaries → 400; malformed form config → 400; writes to `__init__`/`example_profile` → 403 |
+| 15.11 | Cross-origin write | Upload/PATCH/DELETE with `Origin: https://evil.example`, a cross-site Referer, `Origin: null` or another localhost port → 403 and nothing written; same-origin and no-Origin clients pass; `ADMIN_ALLOWED_ORIGINS` extends the list |

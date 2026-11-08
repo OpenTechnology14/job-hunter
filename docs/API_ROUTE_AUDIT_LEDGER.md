@@ -1,6 +1,6 @@
 # Flask API Route Audit Ledger
 
-All routes are defined in `admin/server.py`. **Contract tests:** `tests/admin_routes.py` covers **all 33 routes** (2026-11-07), and a check fails if a route here and in the server ever differ or a route goes uncovered. Writes to the reserved `__init__` and `example_profile` names return 403. Every `<profile>`/`<name>` segment is validated before routing (400 if invalid). Job rows carry a stable `_id` and `_rev`; the job PATCH routes return 409 on a stale `_rev` (2026-11-07). At audit time there was no in-application authentication, authorization, or CSRF enforcement. The local server binds to `127.0.0.1`, which reduces exposure but does not make the route set safe for hosted mode.
+All routes are defined in `admin/server.py`. **Contract tests:** `tests/admin_routes.py` covers **all 33 routes** (2026-11-07), and a check fails if a route here and in the server ever differ or a route goes uncovered. Writes to the reserved `__init__` and `example_profile` names return 403. Every POST/PUT/PATCH/DELETE from a disallowed Origin returns 403 (2026-11-08). Every `<profile>`/`<name>` segment is validated before routing (400 if invalid). Job rows carry a stable `_id` and `_rev`; the job PATCH routes return 409 on a stale `_rev` (2026-11-07). At audit time there was no in-application authentication, authorization, or CSRF enforcement. The local server binds to `127.0.0.1`, which reduces exposure but does not make the route set safe for hosted mode.
 
 | Method | Path | Operation | Hosted risk/gate |
 |---|---|---|---|
