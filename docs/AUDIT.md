@@ -78,3 +78,7 @@ JH-015 and JH-016 closed with regression tests (see `docs/GAP_AUDIT.md`). The de
 ### 2026-10-27 repository re-creation
 
 Personal data (full name, phone, city, personal email) was reachable through the old repository's PR refs, which GitHub doesn't let owners rewrite. The old repository is now private and archived (`job-hunter-archive`), and this public repository was re-created with one commit. Verified before that commit: no personal email, phone or city string in the tree. Copyright holder set per JH-D03.
+
+### 2026-11-07 email-privacy follow-up
+
+GitHub primary-email visibility is now private (JH-D06 resolved). GitHub authors its own merges with the noreply address (verified on a squash merge right after the change). No history was rewritten. PR #1's pre-existing commit `d958ba1` still carries the old address; JH-D08 recommends a squash merge.
