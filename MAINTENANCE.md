@@ -245,7 +245,7 @@ Partial list (20 of 33). The canonical inventory is [`docs/API_ROUTE_AUDIT_LEDGE
 | POST | `/api/profiles` | Create new profile from template |
 | DELETE | `/api/profiles/<name>` | Delete profile file (keeps output data) |
 | GET | `/api/jobs/<profile>?source=api\|browser` | List jobs with filters |
-| PATCH | `/api/jobs/<profile>/<index>` | Update single job field |
+| PATCH | `/api/jobs/<profile>/<index>` | Update single job field. Send `_id` + `_rev` from the listing: 409 if the job changed, 404 if it's gone |
 | PATCH | `/api/jobs/<profile>/bulk` | Bulk update jobs |
 | GET | `/api/jobs/<profile>/stats` | Job statistics by category/source |
 | POST | `/api/scrape/<profile>` | Start scrape (api/browser/both) |

@@ -26,8 +26,6 @@ REPO = Path(__file__).resolve().parent.parent
 # Mutating routes not yet covered (phase 2). Keep in ledger order.
 PHASE2_PENDING = {
     ("PATCH", "/api/profiles/<name>/search-settings"),
-    ("PATCH", "/api/jobs/<profile>/<int:index>"),
-    ("PATCH", "/api/jobs/<profile>/bulk"),
     ("POST", "/api/scrape/<profile>"),
     ("PUT", "/api/form-config/<profile>"),
     ("POST", "/api/form-config/<profile>/seed"),
@@ -79,7 +77,8 @@ def write_jobs(server, root):
                                        ("Synthetic Analyst", "Beta Test", "", "On-site")]:
         r = {c: "" for c in server.SHEET_COLUMNS}
         r.update({"Job Title": title, "Company": company, "Apply": apply_, "Work Type": wt,
-                  "Source": "Fixture", "Role Category": "Synthetic"})
+                  "Source": "Fixture", "Role Category": "Synthetic",
+                  "URL": f"https://jobs.example.test/{title.split()[-1].lower()}?utm_source=feed"})
         rows.append(r)
     atomic_io.atomic_write_csv(out / "jobs.csv", rows, server.SHEET_COLUMNS)
     b = {c: "" for c in server.BROWSER_COLUMNS}
@@ -229,6 +228,79 @@ def run():
         u = b[0]
         assert (u["profile"], u["api_jobs"], u["approved"], u["applied"]) == ("synthetic", 2, 1, 1), u
     case(rt, "one user with counts", all_users)
+
+    # ── job edits: stable id, revision, conflict (JH-010 follow-up) ──
+    import atomic_io
+    jobs_csv = root / "output" / "synthetic" / "jobs.csv"
+
+    def patch(url, body):
+        r = c.patch(url, json=body)
+        return r.status_code, r.get_json(silent=True)
+
+    def listing():
+        return {j["Job Title"]: j for j in get("/api/jobs/synthetic")[1]["jobs"]}
+
+    rt = cover("PATCH", "/api/jobs/<profile>/<int:index>")
+    def ids_stable():
+        a, b = listing(), listing()
+        eng = a["Synthetic Engineer"]
+        assert eng["_id"].startswith("j_") and eng["_id"] == b["Synthetic Engineer"]["_id"], eng
+        assert eng["_rev"] == b["Synthetic Engineer"]["_rev"], "rev must be stable across reads"
+        canon = server._job_id({"Source": "Fixture", "URL": "HTTPS://Jobs.Example.Test/engineer/?utm_campaign=z"})
+        assert canon == eng["_id"], "canonical URL must ignore case, trailing slash and utm_*"
+    case(rt, "_id/_rev are stable; _id uses the canonical URL", ids_stable)
+
+    def edit_lands_after_reorder():
+        eng = listing()["Synthetic Engineer"]
+        rows = atomic_io.read_csv_rows(jobs_csv)          # a scrape inserts a new row on top
+        new = {k: "" for k in server.SHEET_COLUMNS}; new.update({"Job Title": "Inserted By Scrape", "URL": "https://jobs.example.test/new"})
+        atomic_io.atomic_write_csv(jobs_csv, [new] + rows, server.SHEET_COLUMNS)
+        s, b = patch(f"/api/jobs/synthetic/{eng['_index']}", {"Notes": "edited", "_id": eng["_id"], "_rev": eng["_rev"]})
+        assert s == 200 and b["row"]["Job Title"] == "Synthetic Engineer" and b["row"]["_index"] == 1, (s, b)
+        after = listing()
+        assert after["Synthetic Engineer"]["Notes"] == "edited" and after["Inserted By Scrape"]["Notes"] == "", after
+        assert b["row"]["_id"] == eng["_id"] and b["row"]["_rev"] != eng["_rev"], "id kept, rev changed"
+    case(rt, "edit by _id lands on the right job after a reorder", edit_lands_after_reorder)
+
+    def stale_rev_conflicts():
+        eng = listing()["Synthetic Engineer"]
+        patch(f"/api/jobs/synthetic/{eng['_index']}", {"Apply": "N", "_id": eng["_id"], "_rev": eng["_rev"]})  # someone else
+        before = jobs_csv.read_bytes()
+        s, b = patch(f"/api/jobs/synthetic/{eng['_index']}", {"Apply": "Y", "_id": eng["_id"], "_rev": eng["_rev"]})
+        assert s == 409 and b["error"] == "conflict" and b["current"]["Apply"] == "N", (s, b)
+        assert jobs_csv.read_bytes() == before, "a conflicting edit must not write"
+    case(rt, "stale _rev -> 409 with the current row, nothing written", stale_rev_conflicts)
+
+    case(rt, "unknown _id -> 404", lambda: assert_(patch("/api/jobs/synthetic/0", {"Notes": "x", "_id": "j_000000000000"})[0] == 404, "expected 404"))
+    def legacy_index():
+        s, b = patch("/api/jobs/synthetic/0", {"Notes": "by index"})
+        assert s == 200 and b["row"]["Notes"] == "by index" and "_id" in b["row"], (s, b)
+        assert patch("/api/jobs/synthetic/99", {"Notes": "x"})[0] == 400, "bad index still 400"
+    case(rt, "index-only PATCH still works (compatibility)", legacy_index)
+    def ambiguous():
+        rows = atomic_io.read_csv_rows(jobs_csv)
+        atomic_io.atomic_write_csv(jobs_csv, rows + [dict(rows[0])], server.SHEET_COLUMNS)   # duplicate row
+        dup_id = server._job_id(rows[0])
+        s, b = patch("/api/jobs/synthetic/0", {"Notes": "x", "_id": dup_id})
+        atomic_io.atomic_write_csv(jobs_csv, rows, server.SHEET_COLUMNS)
+        assert s == 409 and b["error"] == "ambiguous", (s, b)
+    case(rt, "duplicate rows -> 409 ambiguous, not a guess", ambiguous)
+
+    rt = cover("PATCH", "/api/jobs/<profile>/bulk")
+    def bulk_all_or_nothing():
+        jobs = listing()
+        a, b = jobs["Synthetic Engineer"], jobs["Synthetic Analyst"]
+        before = jobs_csv.read_bytes()
+        s, r = patch("/api/jobs/synthetic/bulk", {"items": [{"_id": a["_id"], "_rev": a["_rev"]}, {"_id": b["_id"], "_rev": "stale0000000"}], "updates": {"Notes": "bulk"}})
+        assert s == 409 and len(r["conflicts"]) == 1 and jobs_csv.read_bytes() == before, (s, r)
+        s, r = patch("/api/jobs/synthetic/bulk", {"items": [{"_id": a["_id"], "_rev": a["_rev"]}, {"_id": b["_id"], "_rev": b["_rev"]}], "updates": {"Notes": "bulk"}})
+        assert s == 200 and r["updated"] == 2, (s, r)
+        assert all(listing()[t]["Notes"] == "bulk" for t in ("Synthetic Engineer", "Synthetic Analyst"))
+    case(rt, "bulk with items is all-or-nothing on conflict", bulk_all_or_nothing)
+    def bulk_legacy():
+        s, r = patch("/api/jobs/synthetic/bulk", {"indices": [0, 99], "updates": {"Notes": "legacy"}})
+        assert s == 200 and r["updated"] == 1, (s, r)
+    case(rt, "bulk by indices still works (compatibility)", bulk_legacy)
 
     # ── path safety across profile-scoped GET routes ──
     case("(path safety)", "profile segment can't reach outside output/", path_safety(get))

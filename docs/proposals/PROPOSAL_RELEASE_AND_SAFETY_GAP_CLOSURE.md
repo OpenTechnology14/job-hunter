@@ -369,3 +369,9 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 **Verified:** `atomic_io.py` implements the §9 write contract (unique temp file in the target directory, fsync, mode kept, `os.replace`, residue removed on failure) and a cross-process per-file lock covering the whole read-modify-write. Every audited write path now uses it (see JH-010 in `docs/GAP_AUDIT.md`). `local_sync.push_jobs` rewrites under the lock instead of appending, so a crash can't tear a row. Columns a user added in their spreadsheet are kept rather than raising. Six new storage tests (GAP-JH-07 concurrent writers, GAP-JH-08 fault before replace, mode and columns, corrupt JSON, locked `mark_applied`, admin PATCH routes) pass, and removing each invariant fails at least two of them.
 
 **Next concrete step:** a stable `Job ID` (normalized source plus canonical URL) with ETag/409 for the index-addressed admin PATCH routes. That changes the admin API and its JavaScript, and needs no owner decision.
+
+### 2026-11-07 — JH-WP3 step 2: stable Job IDs and conflict detection
+
+**Verified:** `admin/server.py` adds `_id` (`j_` plus a SHA-256 prefix of the normalized source and canonical URL; title|company|date-found when there's no URL) and `_rev` (a hash of the row) to every job returned by `GET /api/jobs/<profile>`. `PATCH /api/jobs/<profile>/<index>` locates the row by `_id` when given (so a scrape that reorders the CSV can't redirect an edit), returns **409 conflict** with the current row on a stale `_rev`, 409 when duplicate rows share an id, and 404 when the job is gone. Bulk PATCH with `items` is all-or-nothing. Index-only requests still behave as before. The UI sends `_id`/`_rev`, keeps the new `_rev` after each save, and reloads on 409/404. Seven route cases cover this, and removing each guard fails at least one of them.
+
+**Not done:** ETag/`If-Match` headers. The revision travels in the JSON body instead, which the single-page UI already controls.

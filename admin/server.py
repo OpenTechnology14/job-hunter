@@ -17,6 +17,7 @@ The Flask debugger is OFF unless --debug or ADMIN_DEBUG=1 is given (JH-011): its
 interactive console runs arbitrary Python for anyone who can reach the page.
 """
 import csv
+import hashlib
 import json
 import os
 import re
@@ -26,6 +27,7 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 # Add parent dir to path so we can import project modules
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -58,6 +60,51 @@ BROWSER_COLUMNS = [
     "Role Category", "Source", "Easy Apply", "Direct Apply Link",
     "Apply", "URL", "Date Found", "Notes",
 ]
+
+
+# ── Stable job identity + revisions (JH-010 follow-up, proposal §9) ─────
+# Rows are still stored by position in the CSV, but a scrape can insert or
+# remove rows between the moment the UI loads a job and the moment it saves.
+# `_id` (from source + canonical URL) finds the right row regardless of
+# position; `_rev` (a hash of the row) detects that it changed meanwhile.
+
+def _canonical_url(url):
+    url = (url or "").strip()
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    query = urlencode(sorted((k, v) for k, v in parse_qsl(parts.query)
+                             if not k.lower().startswith("utm_")))
+    path = parts.path.rstrip("/") or "/"
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, query, ""))
+
+
+def _job_id(row):
+    url = _canonical_url(row.get("URL") or row.get("Job URL") or "")
+    if url:
+        key = f"{(row.get('Source') or '').strip().lower()}|{url}"
+    else:  # no URL: fall back to what identifies the posting in the sheet
+        key = "|".join((row.get(k) or "").strip().lower()
+                       for k in ("Job Title", "Company", "Date Found"))
+    return "j_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _job_rev(row):
+    data = json.dumps({k: v for k, v in row.items() if k and not k.startswith("_")},
+                      sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:12]
+
+
+def _with_identity(row, index):
+    return {**row, "_index": index, "_id": _job_id(row), "_rev": _job_rev(row)}
+
+
+def _locate(rows, job_id):
+    """Index of the row with this _id; None if missing; -1 if ambiguous."""
+    hits = [i for i, r in enumerate(rows) if _job_id(r) == job_id]
+    if not hits:
+        return None
+    return hits[0] if len(hits) == 1 else -1
 
 
 def _list_profiles():
@@ -253,9 +300,8 @@ def get_jobs(profile):
 
     rows = _read_csv(filepath)
 
-    # Add index to each row
-    for i, row in enumerate(rows):
-        row["_index"] = i
+    # Add position, stable id and revision to each row
+    rows = [_with_identity(row, i) for i, row in enumerate(rows)]
 
     # Apply filters
     work_type = request.args.get("work_type")
@@ -295,21 +341,38 @@ def update_job(profile, index):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    updates = request.json
+    updates = request.json or {}
+    job_id, rev = updates.get("_id"), updates.get("_rev")
     result = {}
 
     def mutate(rows):
-        if index < 0 or index >= len(rows):
+        idx = index
+        if job_id:  # stable identity wins over the (possibly stale) position
+            idx = _locate(rows, job_id)
+            if idx is None:
+                result["error"] = (404, {"error": "Job not found — it may have been removed by a scrape or cleanup"})
+                return None
+            if idx == -1:
+                result["error"] = (409, {"error": "ambiguous", "detail": "More than one row has this job id"})
+                return None
+        elif idx < 0 or idx >= len(rows):
+            result["error"] = (400, {"error": "Invalid index"})
+            return None
+        if rev and rev != _job_rev(rows[idx]):
+            result["error"] = (409, {"error": "conflict",
+                                     "detail": "This job changed after you loaded it",
+                                     "current": _with_identity(rows[idx], idx)})
             return None
         for key, value in updates.items():
             if key in columns:
-                rows[index][key] = value
-        result["row"] = rows[index]
+                rows[idx][key] = value
+        result["row"] = _with_identity(rows[idx], idx)
         return rows
 
     locked_update_csv(filepath, columns, mutate)  # whole read-modify-write under one lock (JH-010)
-    if "row" not in result:
-        return jsonify({"error": "Invalid index"}), 400
+    if "error" in result:
+        status, body = result["error"]
+        return jsonify(body), status
     return jsonify({"ok": True, "row": result["row"]})
 
 
@@ -323,21 +386,42 @@ def bulk_update_jobs(profile):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    body = request.json
+    body = request.json or {}
     indices = body.get("indices", [])
+    items = body.get("items")  # optional [{"_id", "_rev"}]: all-or-nothing with conflict check
     updates = body.get("updates", {})
     counter = {"n": 0}
+    result = {}
 
     def mutate(rows):
-        for idx in indices:
-            if 0 <= idx < len(rows):
-                for key, value in updates.items():
-                    if key in columns:
-                        rows[idx][key] = value
-                counter["n"] += 1
+        targets = []
+        if items:
+            conflicts, missing = [], []
+            for it in items:
+                idx = _locate(rows, it.get("_id", ""))
+                if idx is None or idx == -1:
+                    missing.append(it.get("_id"))
+                elif it.get("_rev") and it["_rev"] != _job_rev(rows[idx]):
+                    conflicts.append(_with_identity(rows[idx], idx))
+                else:
+                    targets.append(idx)
+            if conflicts or missing:
+                result["error"] = (409, {"error": "conflict", "conflicts": conflicts, "missing": missing,
+                                         "detail": "Nothing was changed; reload and try again"})
+                return None
+        else:
+            targets = [i for i in indices if 0 <= i < len(rows)]
+        for idx in targets:
+            for key, value in updates.items():
+                if key in columns:
+                    rows[idx][key] = value
+            counter["n"] += 1
         return rows
 
     locked_update_csv(filepath, columns, mutate)  # JH-010
+    if "error" in result:
+        status, payload = result["error"]
+        return jsonify(payload), status
     return jsonify({"ok": True, "updated": counter["n"]})
 
 

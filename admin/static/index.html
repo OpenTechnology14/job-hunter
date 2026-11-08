@@ -669,8 +669,15 @@ function loadPage(name) {
 // ── API Helper ─────────────────────────────────────────
 async function api(url, opts) {
   const res = await fetch(url, opts);
-  return res.json();
+  const body = await res.json();
+  if (body && typeof body === 'object' && !Array.isArray(body)) body._status = res.status;
+  return body;
 }
+
+// Stable identity of the jobs currently shown: {'profile:index': {_id, _rev}}.
+// Sent with every edit so a scrape that reorders the CSV can't redirect it,
+// and a stale view gets a 409 instead of silently overwriting (JH-010).
+let loadedJobIds = {};
 
 function toast(msg, isError) {
   const t = document.getElementById('toast');
@@ -947,6 +954,8 @@ async function renderJobsBody(profile) {
   let url = `/api/jobs/${profile}?source=${source}${searchParam}`;
   const data = await api(url);
   let allJobs = data.jobs || [];
+  for (const k of Object.keys(loadedJobIds)) if (k.startsWith(profile + ':')) delete loadedJobIds[k];
+  allJobs.forEach(j => { loadedJobIds[`${profile}:${j._index}`] = { _id: j._id, _rev: j._rev }; });
 
   // Populate category dropdown from data
   const cats = {};
@@ -1107,21 +1116,39 @@ function renderJobDetailRow(job, profile, colspan) {
   </td></tr>`;
 }
 
-async function updateJobField(profile, index, field, value) {
-  await api(`/api/jobs/${profile}/${index}?source=${currentJobSource}`, {
+async function patchJob(profile, index, changes) {
+  const ident = loadedJobIds[`${profile}:${index}`] || {};
+  const res = await api(`/api/jobs/${profile}/${index}?source=${currentJobSource}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ [field]: value }),
+    body: JSON.stringify({ ...changes, ...(ident._id ? { _id: ident._id, _rev: ident._rev } : {}) }),
   });
-  toast('Updated');
+  if (res._status === 409) {
+    toast('This job changed since the list loaded — reloaded it, please try again', true);
+    loadJobs();
+    return null;
+  }
+  if (res._status === 404) {
+    toast(res.error || 'Job no longer exists', true);
+    loadJobs();
+    return null;
+  }
+  if (!res.ok) {
+    toast(res.error || 'Update failed', true);
+    return null;
+  }
+  // Keep the new revision so a second edit to the same job isn't a false conflict.
+  delete loadedJobIds[`${profile}:${index}`];
+  loadedJobIds[`${profile}:${res.row._index}`] = { _id: res.row._id, _rev: res.row._rev };
+  return res.row;
+}
+
+async function updateJobField(profile, index, field, value) {
+  if (await patchJob(profile, index, { [field]: value })) toast('Updated');
 }
 
 async function toggleApply(profile, index, value) {
-  await api(`/api/jobs/${profile}/${index}?source=${currentJobSource}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ Apply: value }),
-  });
+  if (!(await patchJob(profile, index, { Apply: value }))) return;
   loadJobs();
   toast(`Job ${value === 'Y' ? 'approved' : 'rejected'}`);
 }

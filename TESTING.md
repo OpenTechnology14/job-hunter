@@ -239,3 +239,6 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 15.2 | Profile segment `%2E%2E` on profile-scoped routes | 400; nothing from outside `output/` is returned |
 | 15.3 | Resume filename `..` | 404, not a 500 |
 | 15.4 | Ledger check | The server's routes equal `docs/API_ROUTE_AUDIT_LEDGER.md`; each is covered or listed as phase-2 pending |
+| 15.5 | Edit after a scrape reorders the CSV | PATCH with `_id` lands on the same job, not the row now at that index |
+| 15.6 | Stale `_rev` / unknown `_id` / duplicate rows | 409 with the current row (nothing written) / 404 / 409 ambiguous |
+| 15.7 | Bulk PATCH with `items`, one stale | 409, nothing changed; all fresh: every row updated |
