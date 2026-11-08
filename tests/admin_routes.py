@@ -7,13 +7,15 @@ output/, and the __file__-relative roots in ai_training.py / ats_fields.py)
 lands in the temp tree. Nothing reads or writes the real repo's profiles or
 output. No network; no subprocess is started by the GET routes covered here.
 
-Phase 1: every read-only (GET) route. Mutating routes are listed in
-PHASE2_PENDING and must still be mapped, so a new route can't go untested
-silently: the ledger check fails if a route is neither covered nor pending.
+Every route in docs/API_ROUTE_AUDIT_LEDGER.md is covered (phase 1: GET
+routes; phase 2: mutating routes). The scrape route's subprocess and thread
+are stubbed, so no scrape ever runs. A new route can't go untested silently:
+the ledger check fails if a route is neither covered nor in PHASE2_PENDING.
 
 Run directly (prints JSON results) or via `python run_tests.py --routes`.
 """
 import atexit
+import io
 import json
 import re
 import shutil
@@ -23,22 +25,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Mutating routes not yet covered (phase 2). Keep in ledger order.
-PHASE2_PENDING = {
-    ("PATCH", "/api/profiles/<name>/search-settings"),
-    ("POST", "/api/scrape/<profile>"),
-    ("PUT", "/api/form-config/<profile>"),
-    ("POST", "/api/form-config/<profile>/seed"),
-    ("PATCH", "/api/ai-training/<profile>/platforms/<platform_id>"),
-    ("POST", "/api/ai-training/<profile>/generate-resume"),
-    ("POST", "/api/profiles"),
-    ("DELETE", "/api/profiles/<name>"),
-    ("POST", "/api/profiles/<name>/roles"),
-    ("PUT", "/api/profiles/<name>/roles/<role_id>"),
-    ("DELETE", "/api/profiles/<name>/roles/<role_id>"),
-    ("POST", "/api/resumes/<profile>/upload"),
-    ("DELETE", "/api/resumes/<profile>/<filename>"),
-}
+# Routes not yet covered. Must stay empty: the ledger check fails otherwise.
+PHASE2_PENDING = set()  # every route is covered (phase 2 done 2026-11-07)
 
 PDF_BYTES = b"%PDF-1.4\n% synthetic test resume\n%%EOF\n"
 
@@ -57,6 +45,7 @@ def build_tree():
     (root / "profiles").mkdir()
     shutil.copy(REPO / "profiles" / "__init__.py", root / "profiles" / "__init__.py")
     shutil.copy(REPO / "profiles" / "example_profile.py", root / "profiles" / "synthetic.py")
+    shutil.copy(REPO / "profiles" / "example_profile.py", root / "profiles" / "example_profile.py")
 
     out = root / "output" / "synthetic"
     (out / "resumes").mkdir(parents=True)
@@ -301,6 +290,152 @@ def run():
         s, r = patch("/api/jobs/synthetic/bulk", {"indices": [0, 99], "updates": {"Notes": "legacy"}})
         assert s == 200 and r["updated"] == 1, (s, r)
     case(rt, "bulk by indices still works (compatibility)", bulk_legacy)
+
+    # ── phase 2: mutating routes ──
+    profiles = root / "profiles"
+
+    def send(method, url, **kw):
+        r = c.open(url, method=method, **kw)
+        return r.status_code, r.get_json(silent=True)
+
+    rt = cover("PATCH", "/api/profiles/<name>/search-settings")
+    def settings_ok():
+        s, b = send("PATCH", "/api/profiles/synthetic/search-settings", json={"web_search": True, "stale_days": 7, "not_allowed": 1})
+        src = (profiles / "synthetic.py").read_text()
+        assert s == 200 and '"web_search": True' in src and '"stale_days": 7' in src and "not_allowed" not in src, (s, b)
+    case(rt, "whitelisted keys written, unknown keys ignored", settings_ok)
+    case(rt, "non-integer value -> 400, not 500", lambda: assert_(send("PATCH", "/api/profiles/synthetic/search-settings", json={"stale_days": "soon"})[0] == 400, "expected 400"))
+    case(rt, "unknown profile -> 404", lambda: assert_(send("PATCH", "/api/profiles/nope/search-settings", json={"web_search": True})[0] == 404, "expected 404"))
+    case(rt, "the example template can't be edited", lambda: assert_(send("PATCH", "/api/profiles/example_profile/search-settings", json={"web_search": True})[0] == 403, "expected 403"))
+
+    rt = cover("POST", "/api/scrape/<profile>")
+    spawned = []
+    class _InlineThread:  # run the job synchronously, with subprocess.run stubbed
+        def __init__(self, target, args=(), daemon=None): self.target, self.args = target, args
+        def start(self): self.target(*self.args)
+    real_thread, real_run = server.threading.Thread, server.subprocess.run
+    server.threading.Thread = _InlineThread
+    server.subprocess.run = lambda cmd, **kw: spawned.append(cmd) or __import__("subprocess").CompletedProcess(cmd, 0, "ok", "")
+    try:
+        def scrape_ok():
+            s, b = send("POST", "/api/scrape/synthetic", json={"type": "api", "role": "software-engineer"})
+            assert s == 200 and b["status"] == "started", (s, b)
+            cmd = spawned[-1]
+            assert cmd[1] == "run_scrape.py" and cmd[2:4] == ["--profile", "synthetic"] and "--role" in cmd, cmd
+            assert str(root) in cmd[0], f"must use the project's own venv path: {cmd[0]}"
+            assert get("/api/history/synthetic")[1][-1]["status"] == "complete", "run log entry"
+        case(rt, "starts run_scrape.py for the profile (stubbed) and logs it", scrape_ok)
+        def scrape_busy():
+            server._running["synthetic_api"] = True
+            try:
+                assert send("POST", "/api/scrape/synthetic", json={"type": "api"})[0] == 409, "expected 409"
+            finally:
+                server._running.pop("synthetic_api", None)
+        case(rt, "already running -> 409", scrape_busy)
+        case(rt, "non-JSON (cross-site form) post -> 415, nothing spawned",
+             lambda: (lambda n: (assert_(send("POST", "/api/scrape/synthetic", data="type=api", content_type="text/plain")[0] == 415, "expected 415"),
+                                 assert_(len(spawned) == n, "spawned")))(len(spawned)))
+    finally:
+        server.threading.Thread, server.subprocess.run = real_thread, real_run
+
+    rt = cover("PUT", "/api/form-config/<profile>")
+    def form_put():
+        cfg = {"custom_fields": [{"pattern": "nickname", "value": "Syn"}], "select_defaults": []}
+        s, _ = send("PUT", "/api/form-config/synthetic", json=cfg)
+        assert s == 200 and get("/api/form-config/synthetic")[1] == cfg, s
+    case(rt, "replaces the config", form_put)
+    case(rt, "non-object or wrong shape -> 400", lambda: (
+        assert_(send("PUT", "/api/form-config/synthetic", json=None)[0] in (400, 415), "null body"),
+        assert_(send("PUT", "/api/form-config/synthetic", json=[1, 2])[0] == 400, "list body"),
+        assert_(send("PUT", "/api/form-config/synthetic", json={"custom_fields": "x"})[0] == 400, "custom_fields not a list")))
+
+    rt = cover("POST", "/api/form-config/<profile>/seed")
+    def seed():
+        s, b = send("POST", "/api/form-config/synthetic/seed", json={"reset": True})
+        cfg = json.loads((root / "output" / "synthetic" / "form_config.json").read_text())
+        assert s == 200 and b["ok"] and len(cfg["custom_fields"]) > 5, (s, b)
+    case(rt, "seeds from the ATS catalog into the temp tree", seed)
+    case(rt, "unknown profile -> 404", lambda: assert_(send("POST", "/api/form-config/nope/seed", json={})[0] == 404, "expected 404"))
+
+    rt = cover("PATCH", "/api/ai-training/<profile>/platforms/<platform_id>")
+    plat = get("/api/ai-training/synthetic")[1]["platforms"][0]["id"]
+    statuses = get("/api/ai-training/synthetic")[1]["statuses"]
+    def plat_ok():
+        s, b = send("PATCH", f"/api/ai-training/synthetic/platforms/{plat}", json={"status": statuses[-1], "notes": "synthetic"})
+        assert s == 200 and b["status"] == statuses[-1] and b["notes"] == "synthetic", (s, b)
+    case(rt, "updates status and notes", plat_ok)
+    case(rt, "bad status -> 400; unknown platform -> 404", lambda: (
+        assert_(send("PATCH", f"/api/ai-training/synthetic/platforms/{plat}", json={"status": "Bogus"})[0] == 400, "bad status"),
+        assert_(send("PATCH", "/api/ai-training/synthetic/platforms/nope", json={})[0] == 404, "unknown platform")))
+
+    rt = cover("POST", "/api/ai-training/<profile>/generate-resume")
+    case(rt, "410 Gone (JH-015)", lambda: assert_(send("POST", "/api/ai-training/synthetic/generate-resume")[0] == 410, "expected 410"))
+
+    rt = cover("POST", "/api/profiles")
+    def create():
+        s, b = send("POST", "/api/profiles", json={"name": "Second Person!", "user_info": {"name": "Second Person", "email": "second@example.test"}})
+        assert s in (200, 201) and (profiles / "secondperson.py").exists(), (s, b)
+        assert (root / "output" / "secondperson" / "resumes").is_dir(), "output dirs"
+        assert send("POST", "/api/profiles", json={"name": "secondperson"})[0] == 409, "duplicate"
+        assert send("POST", "/api/profiles", json={"name": "!"})[0] == 400, "bad name"
+    case(rt, "creates a sanitized profile; duplicate 409; bad name 400", create)
+
+    rt = cover("POST", "/api/profiles/<name>/roles")
+    def add_role():
+        s, b = send("POST", "/api/profiles/secondperson/roles", json={"role_id": "Data-Eng", "label": "Data Eng", "salary_min": 90000, "salary_max": 120000, "search_queries": ["data engineer"]})
+        assert s == 200 and b["role_id"] == "data-eng", (s, b)
+        assert "data-eng" in get("/api/profiles/secondperson/roles")[1]["roles"], "role listed"
+        assert send("POST", "/api/profiles/secondperson/roles", json={"role_id": "x2", "search_queries": []})[0] == 400, "no queries"
+        assert send("POST", "/api/profiles/secondperson/roles", json={"role_id": "x3", "salary_min": "lots", "search_queries": ["a"]})[0] == 400, "non-integer salary"
+    case(rt, "adds a role; validation errors are 400", add_role)
+
+    rt = cover("PUT", "/api/profiles/<name>/roles/<role_id>")
+    def update_role():
+        s, _ = send("PUT", "/api/profiles/secondperson/roles/data-eng", json={"salary_max": 130000})
+        assert s == 200 and get("/api/profiles/secondperson/roles")[1]["roles"]["data-eng"]["salary_max"] == 130000, s
+        assert send("PUT", "/api/profiles/secondperson/roles/missing", json={})[0] == 404, "missing role"
+        assert send("PUT", "/api/profiles/secondperson/roles/data-eng", json={"salary_min": "x"})[0] == 400, "non-integer salary"
+    case(rt, "updates a role; missing 404; bad value 400", update_role)
+
+    rt = cover("DELETE", "/api/profiles/<name>/roles/<role_id>")
+    def delete_role():
+        s, b = send("DELETE", "/api/profiles/secondperson/roles/data-eng")
+        assert s == 200 and b["remaining_roles"] == 0, (s, b)
+        assert send("DELETE", "/api/profiles/secondperson/roles/data-eng")[0] == 404, "already gone"
+    case(rt, "deletes a role; second delete 404", delete_role)
+
+    rt = cover("POST", "/api/resumes/<profile>/upload")
+    def upload():
+        r = c.post("/api/resumes/synthetic/upload", data={"file": (io.BytesIO(PDF_BYTES), "My Resume (2).pdf")}, content_type="multipart/form-data")
+        b = r.get_json()
+        assert r.status_code == 200 and b["filename"] == "My_Resume__2_.pdf", b
+        assert (root / "output" / "synthetic" / "resumes" / "My_Resume__2_.pdf").read_bytes() == PDF_BYTES
+        bad = c.post("/api/resumes/synthetic/upload", data={"file": (io.BytesIO(b"x"), "notes.txt")}, content_type="multipart/form-data")
+        assert bad.status_code == 400, bad.status_code
+        assert c.post("/api/resumes/synthetic/upload", data={}, content_type="multipart/form-data").status_code == 400, "no file"
+    case(rt, "saves a sanitized PDF name; non-PDF 400; missing file 400", upload)
+
+    rt = cover("DELETE", "/api/resumes/<profile>/<filename>")
+    def delete_resume():
+        assert send("DELETE", "/api/resumes/synthetic/My_Resume__2_.pdf")[0] == 200, "delete"
+        assert not (root / "output" / "synthetic" / "resumes" / "My_Resume__2_.pdf").exists(), "file still there"
+        assert send("DELETE", "/api/resumes/synthetic/My_Resume__2_.pdf")[0] == 404, "second delete"
+        assert send("DELETE", "/api/resumes/synthetic/..")[0] == 404, "dotdot"
+        assert (root / "output" / "synthetic").is_dir(), "profile dir must survive"
+    case(rt, "deletes a resume; missing/.. 404", delete_resume)
+
+    rt = cover("DELETE", "/api/profiles/<name>")
+    def delete_profile():
+        s, b = send("DELETE", "/api/profiles/secondperson")
+        assert s == 200 and not (profiles / "secondperson.py").exists(), (s, b)
+        assert (root / "output" / "secondperson").is_dir(), "output data must be kept"
+        assert send("DELETE", "/api/profiles/secondperson")[0] == 404, "second delete"
+    case(rt, "deletes the profile file, keeps output data", delete_profile)
+    def reserved():
+        for name in ("__init__", "example_profile"):
+            s, _ = send("DELETE", f"/api/profiles/{name}")
+            assert s == 403 and (profiles / f"{name}.py").exists(), f"{name}: {s}"
+    case(rt, "reserved files (__init__, example template) can't be deleted", reserved)
 
     # ── path safety across profile-scoped GET routes ──
     case("(path safety)", "profile segment can't reach outside output/", path_safety(get))

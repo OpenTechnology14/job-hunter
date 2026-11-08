@@ -8,7 +8,7 @@
 | Web parsing | 2 tests | Implemented helper | Fixture corpus and provider drift cases |
 | Browser automation | 7 default tests plus config cases; 7 offline fake-page safety tests: dry-run never clicks, and a single-use, job/page-scoped, expiring SubmissionGuard (2026-11-04) | Experimental | Typed outcomes (GAP-JH-06, decision JH-D07) |
 | Scrape CLI | Documented and exercised indirectly | Local implemented | Clean synthetic end-to-end fixture |
-| Flask admin UI | 33 routes; all 18 GET routes contract-tested in a temp project tree, path-segment validation added (2026-11-07) | Local experimental | Phase 2: the 15 mutating routes |
+| Flask admin UI | All 33 routes contract-tested in a temp project tree (66 cases), path-segment and reserved-name validation (2026-11-07) | Local experimental | Origin/CSRF check (JH-007); upload magic and size (JH-009) |
 | Profile management | Python profile modules | Trusted-local only | Declarative model before hosting |
 | Resume storage/upload | Local filesystem | Local experimental | Limits/type checks/tenant ownership |
 | Deployment | Local plus proxy guidance | Local documented | Production WSGI and security acceptance |

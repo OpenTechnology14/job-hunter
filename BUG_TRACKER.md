@@ -24,6 +24,9 @@ Report bugs via [GitHub Issues](https://github.com/OpenTechnology14/job-hunter/i
 |---|---------|-------------|-----|
 | 6 | 2026-11-07 | **High (security):** a crafted `<profile>` segment such as `%2E%2E` resolved outside `output/`, so profile-scoped admin routes could read, and through PUT/upload/delete write, files one level up | `before_request` check: profile/name must match `^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$` (400 otherwise); filenames can't start with `.` or contain a separator. Found by `tests/admin_routes.py` (JH-013) |
 | 7 | 2026-11-07 | `GET /api/resumes/<profile>/..` crashed with a 500 (`IsADirectoryError`) | Serve only an existing regular file; 404 otherwise |
+| 10 | 2026-11-07 | **High:** `DELETE /api/profiles/__init__` deleted `profiles/__init__.py`, and the write routes could edit or delete the `example_profile` template | Non-GET requests on the reserved names return 403 |
+| 11 | 2026-11-07 | Non-numeric `stale_days`/`filter_min_budget` or role salaries crashed with a 500 | Return 400 with the field name |
+| 12 | 2026-11-07 | `PUT /api/form-config/<profile>` accepted any JSON (a list, or a string for `custom_fields`), which later breaks auto-fill | Require an object whose `custom_fields`/`select_defaults` are lists; 400 otherwise |
 
 ---
 

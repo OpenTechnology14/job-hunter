@@ -1303,7 +1303,7 @@ def test_admin_job_patch_routes_locked():
 
 
 def test_admin_route_contracts():
-    """JH-013 phase 1: every GET route against a temp project tree, plus path safety and the ledger check."""
+    """JH-013: all 33 admin routes against a temp project tree, plus path safety and the ledger check."""
     import subprocess
     try:
         import flask  # noqa: F401
@@ -1315,7 +1315,7 @@ def test_admin_route_contracts():
     data = json.loads(proc.stdout.strip().splitlines()[-1])
     failed = [f"{r['route']} | {r['case']}: {r.get('error', '')[:160]}" for r in data["results"] if not r["ok"]]
     assert not failed, "\n    ".join(failed)
-    assert data["covered"] + data["pending"] == 33, data
+    assert data["covered"] == 33 and data["pending"] == 0, data
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1403,7 +1403,7 @@ def main():
 
     if run_routes:
         print(f"\n── Admin Route Contracts (offline, temp project tree) ──")
-        runner.run("Admin GET routes + path safety + ledger (JH-013)", test_admin_route_contracts)
+        runner.run("Admin routes (all 33) + path safety + ledger (JH-013)", test_admin_route_contracts)
 
     print(f"\n── Config Tests ──")
     runner.run("Admin server exists", test_admin_imports)

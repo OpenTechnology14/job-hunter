@@ -107,6 +107,23 @@ def _locate(rows, job_id):
     return hits[0] if len(hits) == 1 else -1
 
 
+def _as_int(value, field):
+    """int() for request fields; raises BadInput (-> 400) instead of a 500."""
+    try:
+        return int(value) if value not in (None, "") else 0
+    except (TypeError, ValueError):
+        raise BadInput(f"{field} must be a whole number")
+
+
+class BadInput(ValueError):
+    pass
+
+
+@app.errorhandler(BadInput)
+def _bad_input(e):
+    return jsonify({"error": str(e)}), 400
+
+
 def _list_profiles():
     """List available profile names."""
     profiles = []
@@ -178,6 +195,9 @@ def _append_run_log(profile, entry):
 # could read or write files there (found by tests/admin_routes.py, JH-013).
 
 PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
+# Files in profiles/ the API must never modify or delete: the package marker
+# and the placeholder template the tests and docs depend on.
+RESERVED_PROFILES = {"__init__", "example_profile"}
 
 
 @app.before_request
@@ -186,6 +206,8 @@ def _validate_path_segments():
     for key in ("profile", "name"):
         if key in args and not PROFILE_NAME_RE.fullmatch(str(args[key])):
             return jsonify({"error": f"Invalid {key}"}), 400
+        if key in args and request.method != "GET" and args[key] in RESERVED_PROFILES:
+            return jsonify({"error": f"'{args[key]}' is reserved and can't be changed"}), 403
     filename = args.get("filename")
     if filename is not None and request.endpoint != "serve_static":
         if filename.startswith(".") or "/" in filename or "\\" in filename:
@@ -266,7 +288,7 @@ def update_search_settings(name):
             val_str = "True" if value else "False"
             pattern = rf'("{key}"\s*:\s*)(True|False)'
         elif key in SETTINGS_INT_KEYS:
-            val_str = str(int(value) if value else 0)
+            val_str = str(_as_int(value, key))
             pattern = rf'("{key}"\s*:\s*)\d+'
         else:
             continue  # unknown key — ignore
@@ -550,10 +572,14 @@ def get_form_config(profile):
 
 @app.route("/api/form-config/<profile>", methods=["PUT"])
 def update_form_config(profile):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or any(
+            not isinstance(body.get(k, []), list) for k in ("custom_fields", "select_defaults")):
+        return jsonify({"error": "Expected an object with custom_fields / select_defaults lists"}), 400
     config_path = _profile_dir(profile) / "form_config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(config_path):
-        atomic_write_json(config_path, request.json)
+        atomic_write_json(config_path, body)
     return jsonify({"ok": True})
 
 
@@ -926,8 +952,8 @@ def add_role(name):
         return jsonify({"error": "role_id must be 2+ lowercase letters/numbers/dashes"}), 400
 
     label = body.get("label", role_id)
-    salary_min = int(body.get("salary_min", 0))
-    salary_max = int(body.get("salary_max", 0))
+    salary_min = _as_int(body.get("salary_min", 0), "salary_min")
+    salary_max = _as_int(body.get("salary_max", 0), "salary_max")
     resume_file = body.get("resume_file", "")
     search_queries = body.get("search_queries", [])
 
@@ -966,9 +992,9 @@ def update_role(name, role_id):
     if "label" in body:
         roles[role_id]["label"] = body["label"]
     if "salary_min" in body:
-        roles[role_id]["salary_min"] = int(body["salary_min"])
+        roles[role_id]["salary_min"] = _as_int(body["salary_min"], "salary_min")
     if "salary_max" in body:
-        roles[role_id]["salary_max"] = int(body["salary_max"])
+        roles[role_id]["salary_max"] = _as_int(body["salary_max"], "salary_max")
     if "resume_file" in body:
         roles[role_id]["resume_file"] = body["resume_file"]
     if "search_queries" in body:
