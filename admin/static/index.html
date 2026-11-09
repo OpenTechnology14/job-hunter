@@ -667,8 +667,18 @@ function loadPage(name) {
 }
 
 // ── API Helper ─────────────────────────────────────────
+// Every write needs a fresh single-use CSRF token (server checks it after Origin).
+async function csrfFetch(url, opts = {}) {
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const t = await (await fetch('/api/csrf-token')).json();
+    opts = { ...opts, headers: { ...(opts.headers || {}), 'X-CSRF-Token': t.token } };
+  }
+  return fetch(url, opts);
+}
+
 async function api(url, opts) {
-  const res = await fetch(url, opts);
+  const res = await csrfFetch(url, opts);
   const body = await res.json();
   if (body && typeof body === 'object' && !Array.isArray(body)) body._status = res.status;
   return body;
@@ -1731,7 +1741,7 @@ async function uploadResume(profile, input) {
   const form = new FormData();
   form.append('file', file);
 
-  const res = await fetch(`/api/resumes/${profile}/upload`, { method: 'POST', body: form });
+  const res = await csrfFetch(`/api/resumes/${profile}/upload`, { method: 'POST', body: form });
   const data = await res.json();
 
   if (data.ok) {
@@ -2019,7 +2029,7 @@ async function wizardUploadResume(input) {
   if (!file) return;
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`/api/resumes/${wizardProfile}/upload`, { method: 'POST', body: form });
+  const res = await csrfFetch(`/api/resumes/${wizardProfile}/upload`, { method: 'POST', body: form });
   const data = await res.json();
   if (data.ok) {
     toast(`Uploaded ${data.filename}`);

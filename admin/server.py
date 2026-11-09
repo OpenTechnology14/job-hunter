@@ -21,10 +21,12 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -243,6 +245,59 @@ def _check_origin():
             "error": "Cross-origin request blocked",
             "detail": "This admin panel only accepts changes from its own page. "
                       "Behind a proxy, add its origin to ADMIN_ALLOWED_ORIGINS.",
+        }), 403
+    return None
+
+
+# ── CSRF tokens (WM-JH-UPLOAD-CSRF-01): second layer after the Origin check ──
+# GET /api/csrf-token issues a random token; every POST/PUT/PATCH/DELETE must
+# present one in the X-CSRF-Token header (or a `csrf_token` form field).
+# Tokens are single-use and expire, so a captured token can't be replayed.
+# A cross-origin page can trigger the GET but can't read its response (no CORS
+# headers), so it never learns a token.
+
+CSRF_TTL_SECONDS = 600
+CSRF_MAX_OUTSTANDING = 1000
+_csrf_tokens = {}            # token -> expiry (monotonic seconds)
+_csrf_lock = threading.Lock()
+_csrf_clock = time.monotonic
+
+
+def issue_csrf_token():
+    now = _csrf_clock()
+    token = secrets.token_urlsafe(32)
+    with _csrf_lock:
+        for t in [t for t, exp in _csrf_tokens.items() if exp <= now]:
+            del _csrf_tokens[t]
+        while len(_csrf_tokens) >= CSRF_MAX_OUTSTANDING:      # drop the oldest
+            del _csrf_tokens[min(_csrf_tokens, key=_csrf_tokens.get)]
+        _csrf_tokens[token] = now + CSRF_TTL_SECONDS
+    return token
+
+
+def consume_csrf_token(token):
+    """True once for a valid, unexpired token; the token is spent either way."""
+    if not token:
+        return False
+    with _csrf_lock:
+        expiry = _csrf_tokens.pop(token, None)
+    return expiry is not None and _csrf_clock() < expiry
+
+
+@app.route("/api/csrf-token")
+def get_csrf_token():
+    return jsonify({"token": issue_csrf_token(), "expires_in": CSRF_TTL_SECONDS})
+
+
+@app.before_request
+def _check_csrf_token():
+    if request.method not in MUTATING_METHODS:
+        return None
+    token = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+    if not consume_csrf_token(token):
+        return jsonify({
+            "error": "Missing or invalid CSRF token",
+            "detail": "Fetch a fresh token from GET /api/csrf-token and send it as X-CSRF-Token; each token works once.",
         }), 403
     return None
 
