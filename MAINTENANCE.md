@@ -131,7 +131,7 @@ with `python quality_filter.py --profile <p> --clean [--dry-run]` — approved
 - New jobs are appended to the bottom
 - Column order defined by `SHEET_COLUMNS` constant
 - `cleanup_stale_jobs()` removes unapproved jobs older than `stale_days` (default 30, 0 = disabled)
-  - Never removes jobs with Apply = "Y" or "Done"
+  - Never removes jobs with Apply = "Y", "Auto Applied", "User Applied" or legacy "Done" (`apply_status.is_protected`)
   - Never removes jobs with no Date Found
   - Called automatically before each scrape (skip with `--no-cleanup`)
 
@@ -158,7 +158,7 @@ Set `STORAGE_MODE` in the profile file. Both modes can coexist - they write to d
    - Applies custom fields from `form_config.json`
    - Uploads resume PDF via `resume_picker.py`
    - **Pauses for user confirmation**: the Submit click goes only through `submission_guard.SubmissionGuard`, as a single-use token bound to this job and page, expiring after 120 s (JH-003)
-   - On confirm: submits, marks "Done" in CSV
+   - On confirm: guarded click → "Auto Applied"; on generic forms you click Submit and answer "y" → "User Applied" (`apply_status.py`, JH-D07)
 4. `--dry-run` flag: does everything except submit
 
 ### Form detection

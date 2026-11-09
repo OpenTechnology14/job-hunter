@@ -375,3 +375,7 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 **Verified:** `admin/server.py` adds `_id` (`j_` plus a SHA-256 prefix of the normalized source and canonical URL; title|company|date-found when there's no URL) and `_rev` (a hash of the row) to every job returned by `GET /api/jobs/<profile>`. `PATCH /api/jobs/<profile>/<index>` locates the row by `_id` when given (so a scrape that reorders the CSV can't redirect an edit), returns **409 conflict** with the current row on a stale `_rev`, 409 when duplicate rows share an id, and 404 when the job is gone. Bulk PATCH with `items` is all-or-nothing. Index-only requests still behave as before. The UI sends `_id`/`_rev`, keeps the new `_rev` after each save, and reloads on 409/404. Seven route cases cover this, and removing each guard fails at least one of them.
 
 **Not done:** ETag/`If-Match` headers. The revision travels in the JSON body instead, which the single-page UI already controls.
+
+### 2026-11-09 — JH-WP2 step 3: typed apply outcomes (§7.1, GAP-JH-06)
+
+**Verified:** `apply_status.py` defines `ApplyStatus.AUTO_APPLIED` / `USER_APPLIED` (owner's labels). `apply_to_job` returns the status: a guarded Easy Apply click gives Auto Applied; a prefilled form the user says they submitted (explicit **y**) gives User Applied; manual, skipped or dry-run is unmarked. Manual review is no longer recorded as an application unless the user confirms they submitted. The migration and protection rules are described in `docs/AUDIT.md` (2026-11-09). This closes GAP-JH-06.

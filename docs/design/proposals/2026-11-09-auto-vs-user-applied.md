@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Accepted 2026-11-09 (owner locked the labels). Implementation is tracked as WM-JH-D07-IMPL-01 |
+| Status | Accepted and implemented 2026-11-09 (WM-JH-D07-IMPL-01) |
 | Date | 2026-11-09 (supersedes the 2026-11-08 "Reviewed vs Done" draft) |
 | Author | Agent (T3 rows WM-JH-D07-TERM-FIX-01, WM-JH-D07-IMPL-01) |
 | Relates to | `docs/GAP_AUDIT.md` JH-D07; `PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md` §7.1 (GAP-JH-06) |
@@ -44,7 +44,7 @@ Historical rows can't be told apart after the fact, so the default is **Auto App
 - Every `Done…` value becomes **Auto Applied**.
 - Rows whose `Apply Method` isn't Easy Apply might really have been finished by hand. They're **also** tagged `needs-review` in `Notes`, a one-time sweep, so you can recheck them.
 - No row is removed or reordered; the only fields changed are Apply and that Notes tag.
-- Run it with `python apply_status.py --profile <name> --migrate [--dry-run]` (added by the implementation PR). It's idempotent. Until you run it, readers already treat `Done…` as Auto Applied, so the UI, stats and protection rules are correct either way.
+- Run it with `python apply_status.py --profile <name> --migrate [--dry-run]`. It's idempotent. Until you run it, readers already treat `Done…` as Auto Applied, so the UI, stats and protection rules are correct either way.
 
 ## Interaction notes (UI)
 

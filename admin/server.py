@@ -37,6 +37,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
 
+from apply_status import classify as classify_apply, is_applied
 from atomic_io import (atomic_write_csv, atomic_write_json, atomic_write_text,
                        file_lock, locked_update_csv, locked_update_json)
 
@@ -556,8 +557,10 @@ def job_stats(profile):
 
     def _stats(rows):
         total = len(rows)
-        approved = sum(1 for r in rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        applied = sum(1 for r in rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
+        kinds = [classify_apply(r.get("Apply")) for r in rows]
+        approved = kinds.count("approved")
+        auto_applied, user_applied = kinds.count("auto_applied"), kinds.count("user_applied")
+        applied = auto_applied + user_applied
         remote = sum(1 for r in rows if r.get("Work Type", "") == "Remote")
         categories = {}
         sources = {}
@@ -568,6 +571,7 @@ def job_stats(profile):
             sources[src] = sources.get(src, 0) + 1
         return {
             "total": total, "approved": approved, "applied": applied,
+            "auto_applied": auto_applied, "user_applied": user_applied,
             "remote": remote, "categories": categories, "sources": sources,
         }
 
@@ -754,8 +758,7 @@ def get_ai_training(profile):
     rows = _read_csv(_profile_dir(profile) / "jobs.csv")
     ai_jobs = [r for r in rows if (r.get("Role Category") or "") == role_label]
     ai_approved = sum(1 for r in ai_jobs
-                      if (r.get("Apply", "") or "").strip().upper() in ("Y",)
-                      or (r.get("Apply", "") or "").strip().upper().startswith("DONE"))
+                      if classify_apply(r.get("Apply")) in ("approved", "auto_applied", "user_applied"))
 
     tracker = load_tracker(profile)
     save_tracker(profile, tracker)  # persist seeding of any new platforms
@@ -1235,10 +1238,10 @@ def all_users_summary():
             user_name = up.get("name", p)
             user_email = up.get("email", "")
 
-        approved = sum(1 for r in api_rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        applied = sum(1 for r in api_rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
-        b_approved = sum(1 for r in browser_rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        b_applied = sum(1 for r in browser_rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
+        approved = sum(1 for r in api_rows if classify_apply(r.get("Apply")) == "approved")
+        applied = sum(1 for r in api_rows if is_applied(r.get("Apply")))
+        b_approved = sum(1 for r in browser_rows if classify_apply(r.get("Apply")) == "approved")
+        b_applied = sum(1 for r in browser_rows if is_applied(r.get("Apply")))
 
         users.append({
             "profile": p,

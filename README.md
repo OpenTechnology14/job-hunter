@@ -75,7 +75,7 @@ Auto-Apply (browser_apply.py + ats_fields.py catalog)
     | fills forms (no personal data in screener questions),
     | uploads the right resume, pauses before every submission
     v
-Job marked "Done" in spreadsheet
+Job marked "Auto Applied" (Job Hunter clicked Submit) or "User Applied" (you did)
 ```
 
 ```

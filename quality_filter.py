@@ -223,7 +223,8 @@ def clean_csv(dry_run: bool = False) -> int:
 
     for row in rows:
         apply_val = (row.get("Apply", "") or "").strip().upper()
-        protected = apply_val == "Y" or apply_val.startswith("DONE")
+        from apply_status import is_protected
+        protected = is_protected(apply_val)
 
         job = _csv_row_to_job(row)
         key = _norm_key(job["title"], job["company"])

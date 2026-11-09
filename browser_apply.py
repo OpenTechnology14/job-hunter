@@ -22,6 +22,7 @@ from config import USER_PROFILE, ROLE_PROFILES, PROFILE_DIR
 from resume_picker import get_resume_by_filename
 from storage import get_worksheet, pull_ready_jobs, mark_applied
 from submission_guard import SubmissionGuard, current_page_fingerprint
+from apply_status import ApplyStatus
 
 
 # ── Autofill Data ─────────────────────────────────────────
@@ -310,8 +311,11 @@ def handle_form_apply(page: Page, pdf_path: str, dry_run: bool = False) -> bool:
         input("    Press Enter to continue to next job: ")
         return False
 
-    confirm = input("    Review in browser. Enter when done, 's' to skip: ").strip()
-    return confirm.lower() != "s"
+    # Job Hunter never clicks Submit on generic forms. Ask whether *you* did,
+    # so the row is recorded as User Applied only when it was really sent (JH-D07).
+    confirm = input("    Review in browser and submit it yourself if you're happy.\n"
+                    "    Did you click Submit? [y/N]: ").strip().lower()
+    return confirm in ("y", "yes")
 
 
 # ── Main Apply Flow ───────────────────────────────────────
@@ -348,17 +352,24 @@ def apply_to_job(page: Page, job: dict, dry_run: bool = False,
     detected = detect_apply_type(page)
     print(f"  🔍 Detected: {detected}")
 
-    success = False
+    # Who clicked Submit decides the status (JH-D07):
+    #   Job Hunter's guarded click        -> Auto Applied
+    #   prefilled by Job Hunter, user sent -> User Applied
+    #   manual (Job Hunter prepared nothing) -> not marked (unchanged)
+    status = None
     if detected == "easy-apply":
-        success = handle_easy_apply(page, pdf_path, dry_run, job_id=url, guard=guard)
+        if handle_easy_apply(page, pdf_path, dry_run, job_id=url, guard=guard):
+            status = ApplyStatus.AUTO_APPLIED
     elif detected in ("resume-upload", "form-fill"):
-        success = handle_form_apply(page, pdf_path, dry_run)
+        if handle_form_apply(page, pdf_path, dry_run):
+            status = ApplyStatus.USER_APPLIED
     else:
         print(f"  ✍️  Manual — apply in the browser window.")
         input("  Press Enter when done: ")
 
     return {
-        "success": success,
+        "success": status is not None,
+        "status": status,
         "resume_used": Path(pdf_path).name if pdf_path else "",
     }
 
@@ -397,7 +408,7 @@ def run_apply_session(dry_run: bool = False):
                 result = apply_to_job(page, job, dry_run, guard=guard)
                 if result["success"]:
                     row_ref = job.get("sheet_row") or job.get("csv_row_index")
-                    mark_applied(ws, row_ref, result.get("resume_used", ""))
+                    mark_applied(ws, row_ref, result.get("resume_used", ""), status=result["status"])
                     applied.append(job)
             except Exception as e:
                 print(f"  ❌ Error: {e}")
