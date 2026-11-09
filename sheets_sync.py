@@ -176,10 +176,12 @@ def pull_ready_jobs(ws=None) -> list[dict]:
     return ready
 
 
-def mark_applied(ws, sheet_row: int, resume_used: str = ""):
-    """Update a row's status to Applied with today's date."""
+def mark_applied(ws, sheet_row: int, resume_used: str = "", status=None):
+    """Update a row's status to Auto Applied / User Applied with today's date."""
+    from apply_status import ApplyStatus
     today = datetime.now().strftime("%Y-%m-%d")
-    ws.update_cell(sheet_row, 8, "✅ Applied")         # Status column (H)
+    label = ApplyStatus(status or ApplyStatus.AUTO_APPLIED).label
+    ws.update_cell(sheet_row, 8, f"✅ {label}")        # Status column (H)
     ws.update_cell(sheet_row, 13, today)                # Date Applied column (M)
     if resume_used:
         ws.update_cell(sheet_row, 9, resume_used)       # Resume Version column (I)

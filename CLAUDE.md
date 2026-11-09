@@ -290,7 +290,7 @@ The browser opens visibly. For each job marked "Y" it:
 4. Fills fields and attaches the resume
 5. Pauses for you to review before submitting
 
-After applying, the Apply column updates to "Done" with today's date.
+After applying, the Apply column shows "Auto Applied" (Job Hunter clicked Submit) or "User Applied" (you clicked Submit after Job Hunter filled the form), with today's date. Older "Done" rows read as Auto Applied; `python apply_status.py --profile <name> --migrate` rewrites them (JH-D07).
 
 ### Schedule automatic scraping (optional):
 ```bash
@@ -329,7 +329,7 @@ Toggles live in Admin Panel → Config → Result Quality Filters
 (`filter_title_relevance`, `filter_usd_only`, `filter_min_budget`,
 `filter_aggregators` in SEARCH_SETTINGS). Retro-clean an existing sheet:
 `python quality_filter.py --profile Example --clean [--dry-run]` (never touches
-rows marked Y/Done).
+rows marked Y, Auto Applied or User Applied).
 
 ---
 

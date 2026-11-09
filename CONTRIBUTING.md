@@ -75,7 +75,7 @@ Auto-Apply (browser_apply.py)
     | resume_picker.py selects correct PDF per role
     | fills forms, uploads resume, pauses before submit
     v
-Job marked "Done" in spreadsheet
+Job marked "Auto Applied" or "User Applied" in spreadsheet
 ```
 
 ---

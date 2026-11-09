@@ -1265,7 +1265,7 @@ def test_local_sync_mark_applied_locked_and_keeps_columns():
     with contextlib.redirect_stdout(io.StringIO()):
         local_sync.mark_applied(None, 0, "synthetic.pdf")
     out = atomic_io.read_csv_rows(jobs)
-    assert out[0]["Apply"] == "Done" and out[0]["Resume Version"] == "synthetic.pdf", out[0]
+    assert out[0]["Apply"] == "Auto Applied" and out[0]["Resume Version"] == "synthetic.pdf", out[0]
     assert out[0]["My Notes"] == "keep me", "user column lost"
     assert Path(f"{jobs}.lock").exists(), "mark_applied did not take the jobs.csv lock"
     assert str(jobs.resolve()).startswith(str(TEST_HOME.resolve())), f"wrote outside the temp home: {jobs.resolve()}"
@@ -1318,6 +1318,90 @@ def test_admin_route_contracts():
     failed = [f"{r['route']} | {r['case']}: {r.get('error', '')[:160]}" for r in data["results"] if not r["ok"]]
     assert not failed, "\n    ".join(failed)
     assert data["covered"] == 34 and data["pending"] == 0, data
+
+
+def test_apply_status_classify_and_migrate():
+    """JH-D07: labels classify correctly; migration keeps every row, Done -> Auto Applied, ambiguous rows tagged."""
+    from apply_status import classify, is_protected, migrate_rows, NEEDS_REVIEW_TAG
+    expect = {"Auto Applied": "auto_applied", "User Applied": "user_applied", "✅ User Applied": "user_applied",
+              "Done": "auto_applied", "Done 2026-10-01": "auto_applied", "✅ Applied": "auto_applied",
+              "Y": "approved", "n": "rejected", "": "pending"}
+    for v, k in expect.items():
+        assert classify(v) == k, f"{v!r} -> {classify(v)} (expected {k})"
+    assert all(is_protected(v) for v in ("Y", "Auto Applied", "User Applied", "Done")) and not is_protected("N")
+    rows = [{"Job Title": "A", "Apply": "Done", "Apply Method": "⚡ Easy Apply", "Notes": ""},
+            {"Job Title": "B", "Apply": "Done", "Apply Method": "📋 Form Fill", "Notes": "keep this"},
+            {"Job Title": "C", "Apply": "Y", "Apply Method": "", "Notes": ""},
+            {"Job Title": "D", "Apply": "User Applied", "Apply Method": "📋 Form Fill", "Notes": ""}]
+    out, summary = migrate_rows(rows)
+    assert [r["Job Title"] for r in out] == ["A", "B", "C", "D"], "rows must be preserved in order"
+    assert [r["Apply"] for r in out] == ["Auto Applied", "Auto Applied", "Y", "User Applied"], out
+    assert NEEDS_REVIEW_TAG in out[1]["Notes"] and out[1]["Notes"].startswith("keep this"), out[1]
+    assert NEEDS_REVIEW_TAG not in out[0]["Notes"], "Easy Apply rows aren't ambiguous"
+    assert summary == {"rows": 4, "migrated": 2, "needs_review": 1}, summary
+    again, s2 = migrate_rows(out)
+    assert again == out and s2["migrated"] == 0, "migration must be idempotent"
+    assert rows[0]["Apply"] == "Done", "input rows must not be mutated"
+
+
+class _FakeJobPage(_FakeApplyPage):
+    """A job page apply_to_job can navigate to: Easy Apply or a generic form."""
+    def __init__(self, kind):
+        super().__init__(["Submit application"])
+        self.kind = kind
+        self.url = "https://jobs.example.test/apply/1"
+    def goto(self, url, **kw):
+        self.url = url
+    def content(self):
+        return "<html>easy apply</html>" if self.kind == "easy" else "<html>application form</html>"
+
+
+def _apply(ba, kind, answers, dry_run=False):
+    page = _FakeJobPage(kind)
+    job = {"url": "https://jobs.example.test/apply/1", "title": "Synthetic Role", "company": "Acme Test"}
+    result, _ = _run_quietly(ba.apply_to_job, answers, page, job, dry_run)
+    return result, page
+
+
+def test_auto_vs_user_applied_detection():
+    """JH-D07: Job Hunter's guarded click -> auto_applied; user submit after prefill -> user_applied; otherwise unmarked."""
+    ba = _import_browser_apply_isolated()
+    from apply_status import ApplyStatus
+    r, page = _apply(ba, "easy", ["", ""])           # proceed, then confirm SUBMIT
+    assert r["status"] == ApplyStatus.AUTO_APPLIED and "Submit application" in page.clicks, (r, page.clicks)
+    r, page = _apply(ba, "form", ["y"])               # user says they clicked Submit
+    assert r["status"] == ApplyStatus.USER_APPLIED and r["success"] and page.clicks == [], (r, page.clicks)
+    r, _ = _apply(ba, "form", [""])                   # didn't submit
+    assert r["status"] is None and not r["success"], r
+    r, _ = _apply(ba, "easy", ["", "s"])              # skipped at SUBMIT
+    assert r["status"] is None, r
+    r, _ = _apply(ba, "form", [""], dry_run=True)
+    assert r["status"] is None, r
+
+
+def test_mark_applied_labels_and_cleanup_protection():
+    """JH-D07: mark_applied writes the right label; stale cleanup keeps both applied values and legacy Done."""
+    import local_sync, atomic_io
+    from apply_status import ApplyStatus
+    jobs = local_sync.JOBS_FILE
+    jobs.parent.mkdir(parents=True, exist_ok=True)
+    old = "2020-01-01"
+    def row(title, apply_):
+        r = {c: "" for c in local_sync.SHEET_COLUMNS}
+        r.update({"Job Title": title, "Apply": apply_, "Date Posted": old, "Date Found": old, "URL": f"https://jobs.example.test/{title}"})
+        return r
+    atomic_io.atomic_write_csv(jobs, [row("a", "Y"), row("b", "")], local_sync.SHEET_COLUMNS)
+    import io, contextlib
+    with contextlib.redirect_stdout(io.StringIO()):
+        local_sync.mark_applied(None, 0, "", status=ApplyStatus.USER_APPLIED)
+        local_sync.mark_applied(None, 1, "")          # default -> Auto Applied
+    assert [r["Apply"] for r in atomic_io.read_csv_rows(jobs)] == ["User Applied", "Auto Applied"]
+    atomic_io.atomic_write_csv(jobs, [row("u", "User Applied"), row("a", "Auto Applied"), row("d", "Done"),
+                                      row("y", "Y"), row("blank", ""), row("no", "N")], local_sync.SHEET_COLUMNS)
+    with _patched(local_sync, SEARCH_SETTINGS={"stale_days": 21}), contextlib.redirect_stdout(io.StringIO()):
+        removed = local_sync.cleanup_stale_jobs()
+    left = [r["Job Title"] for r in atomic_io.read_csv_rows(jobs)]
+    assert left == ["u", "a", "d", "y"] and removed == 2, f"left={left} removed={removed}"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1402,6 +1486,9 @@ def main():
         runner.run("Guard: single-use, job/page-scoped (GAP-JH-05)", test_guard_token_single_use_and_scoped)
         runner.run("Guard: expiry and invalidation (JH-003)", test_guard_expiry_and_invalidation)
         runner.run("Easy Apply refuses after page change (JH-003)", test_easy_apply_refuses_if_page_changes_after_confirm)
+        runner.run("Apply status: classify + migration (JH-D07)", test_apply_status_classify_and_migrate)
+        runner.run("Auto vs User Applied detection (JH-D07)", test_auto_vs_user_applied_detection)
+        runner.run("mark_applied labels + cleanup keeps applied (JH-D07)", test_mark_applied_labels_and_cleanup_protection)
 
     if run_routes:
         print(f"\n── Admin Route Contracts (offline, temp project tree) ──")

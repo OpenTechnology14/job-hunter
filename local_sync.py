@@ -18,6 +18,7 @@ from email.utils import parsedate_to_datetime
 
 from config import SHEET_COLUMNS, DATA_DIR, PROFILE_DIR, LOCATION_FILTER, SEARCH_SETTINGS
 from atomic_io import atomic_write_csv, file_lock
+from apply_status import ApplyStatus, is_protected
 
 
 def _build_location_set() -> set:
@@ -366,8 +367,8 @@ def _cleanup_stale_jobs_unlocked(**kwargs):
     for row in rows:
         apply_val = (row.get("Apply", "") or "").strip().upper()
 
-        # Never remove approved or applied jobs
-        if apply_val in ("Y", "DONE") or apply_val.startswith("DONE"):
+        # Never remove approved or applied jobs (Y, Auto/User Applied, legacy Done)
+        if is_protected(apply_val):
             keep.append(row)
             continue
 
@@ -495,7 +496,8 @@ def pull_ready_jobs(**kwargs) -> list[dict]:
     return ready
 
 
-def _mark_applied_unlocked(ws_unused, row_index, resume_used: str = ""):
+def _mark_applied_unlocked(ws_unused, row_index, resume_used: str = "",
+                           status: ApplyStatus = ApplyStatus.AUTO_APPLIED):
     """
     Mark a job as applied in the local CSV.
     row_index is csv_row_index from pull_ready_jobs.
@@ -507,7 +509,7 @@ def _mark_applied_unlocked(ws_unused, row_index, resume_used: str = ""):
     idx = row_index if isinstance(row_index, int) else -1
 
     if 0 <= idx < len(rows):
-        rows[idx]["Apply"] = "Done"
+        rows[idx]["Apply"] = ApplyStatus(status or ApplyStatus.AUTO_APPLIED).label
         rows[idx]["Date Applied"] = today
         if resume_used:
             rows[idx]["Resume Version"] = resume_used
@@ -530,9 +532,10 @@ def push_jobs(jobs: list[dict], **kwargs):
         return _push_jobs_unlocked(jobs, **kwargs)
 
 
-def mark_applied(ws_unused, row_index, resume_used: str = ""):
+def mark_applied(ws_unused, row_index, resume_used: str = "",
+                 status: ApplyStatus = ApplyStatus.AUTO_APPLIED):
     with file_lock(JOBS_FILE):
-        return _mark_applied_unlocked(ws_unused, row_index, resume_used)
+        return _mark_applied_unlocked(ws_unused, row_index, resume_used, status)
 
 
 def sync_scraped_to_sheet(input_file: str = None):

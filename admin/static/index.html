@@ -173,6 +173,9 @@
     .apply-btn.yes { background: #059669; color: #fff; }
     .apply-btn.no { background: #dc2626; color: #fff; }
     .apply-btn.done { background: var(--surface2); color: var(--green); }
+    /* JH-D07: who clicked Submit. Filled green = Job Hunter; outlined blue = you. */
+    .apply-btn.auto { background: var(--green); color: #0f1117; border: 1px solid var(--green); }
+    .apply-btn.user { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
     .apply-btn.empty { background: var(--surface2); color: var(--text-dim); }
     /* ── Badges ──────────────────────────── */
     .badge {
@@ -873,10 +876,21 @@ function setJobStatusFilter(status) {
   loadJobs();
 }
 
+// Mirrors apply_status.classify(): legacy "Done…" reads as Auto Applied.
+function applyKind(val) {
+  const v = (val || '').trim().replace(/^✅\s*/, '').toUpperCase();
+  if (v.startsWith('AUTO APPLIED') || v.startsWith('DONE') || v === 'APPLIED') return 'auto_applied';
+  if (v.startsWith('USER APPLIED')) return 'user_applied';
+  if (v === 'Y') return 'approved';
+  if (v === 'N') return 'rejected';
+  return 'pending';
+}
+const isAppliedVal = (val) => ['auto_applied', 'user_applied'].includes(applyKind(val));
+
 function _classifyApply(val) {
   const v = (val || '').trim().toUpperCase();
   if (v === 'Y') return 'approved';
-  if (v === 'DONE' || v.startsWith('DONE')) return 'applied';
+  if (isAppliedVal(val)) return 'applied';
   if (v === 'N') return 'rejected';
   return 'pending';
 }
@@ -1036,7 +1050,8 @@ async function renderJobsBody(profile) {
         const applyVal = (job.Apply || '').trim().toUpperCase();
         let applyBtn = '';
         if (applyVal === 'Y') applyBtn = `<button class="apply-btn yes" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'N')">Y</button>`;
-        else if (applyVal === 'DONE' || applyVal.startsWith('DONE')) applyBtn = `<span class="apply-btn done">Done</span>`;
+        else if (applyKind(applyVal) === 'auto_applied') applyBtn = `<span class="apply-btn auto" title="Job Hunter clicked Submit">Auto Applied</span>`;
+        else if (applyKind(applyVal) === 'user_applied') applyBtn = `<span class="apply-btn user" title="Job Hunter prepared it; you clicked Submit">User Applied</span>`;
         else if (applyVal === 'N') applyBtn = `<button class="apply-btn no" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'Y')">N</button>`;
         else applyBtn = `<button class="apply-btn empty" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'Y')">-</button>`;
 
@@ -1085,7 +1100,7 @@ function renderJobDetailRow(job, profile, colspan) {
   ];
 
   const applyVal = (job.Apply || '').trim().toUpperCase();
-  const statusLabel = applyVal === 'Y' ? 'Approved' : applyVal === 'DONE' || applyVal.startsWith('DONE') ? 'Applied' : applyVal === 'N' ? 'Rejected' : 'Pending Review';
+  const statusLabel = applyVal === 'Y' ? 'Approved' : applyKind(applyVal) === 'auto_applied' ? 'Auto Applied' : applyKind(applyVal) === 'user_applied' ? 'User Applied' : applyVal === 'N' ? 'Rejected' : 'Pending Review';
 
   return `<tr class="job-detail-row"><td colspan="${colspan}">
     <div class="job-detail">
@@ -1117,9 +1132,9 @@ function renderJobDetailRow(job, profile, colspan) {
         <div class="detail-value" style="font-weight:600;">${statusLabel}</div>
       </div>
       <div class="detail-actions">
-        ${applyVal !== 'Y' && !applyVal.startsWith('DONE') ? `<button class="btn sm green" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'Y')">Approve</button>` : ''}
+        ${applyVal !== 'Y' && !isAppliedVal(applyVal) ? `<button class="btn sm green" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'Y')">Approve</button>` : ''}
         ${applyVal === 'Y' ? `<button class="btn sm secondary" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'N')">Unapprove</button>` : ''}
-        ${applyVal !== 'N' && !applyVal.startsWith('DONE') ? `<button class="btn sm red" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'N')">Reject</button>` : ''}
+        ${applyVal !== 'N' && !isAppliedVal(applyVal) ? `<button class="btn sm red" onclick="event.stopPropagation();toggleApply('${profile}',${idx},'N')">Reject</button>` : ''}
         ${job.URL ? `<a href="${esc(job.URL)}" target="_blank" class="btn sm secondary" onclick="event.stopPropagation()">Open Listing</a>` : ''}
       </div>
     </div>

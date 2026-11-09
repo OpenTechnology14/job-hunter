@@ -82,3 +82,7 @@ Personal data (full name, phone, city, personal email) was reachable through the
 ### 2026-11-07 email-privacy follow-up
 
 GitHub primary-email visibility is now private (JH-D06 resolved). GitHub authors its own merges with the noreply address (verified on a squash merge right after the change). No history was rewritten. PR #1's pre-existing commit `d958ba1` still carries the old address; JH-D08 recommends a squash merge.
+
+### 2026-11-09 apply-status migration (JH-D07)
+
+"Done" is split into **Auto Applied** (Job Hunter clicked Submit) and **User Applied** (Job Hunter prefilled; the user clicked Submit). Historical rows can't be told apart, so every `Done…` value migrates to **Auto Applied**. Rows whose Apply Method isn't Easy Apply also get a one-time `needs-review` tag in Notes. No row is added, removed or reordered; run `python apply_status.py --profile <name> --migrate [--dry-run]`, which is idempotent. Until it runs, every reader already treats `Done…` as Auto Applied. Verified in a temp directory: 3 rows kept, 2 migrated, 1 tagged; a second run changed nothing; dry-run wrote nothing.

@@ -166,7 +166,7 @@ When you run `run_apply.py`, it:
    - Fills in your name, email, phone, etc.
    - Uploads your resume PDF
    - **Pauses and asks you** before clicking Submit
-4. After you confirm, it submits and marks the job as "Done"
+4. After you confirm, it submits and marks the job **Auto Applied**. On forms Job Hunter only fills in, you click Submit yourself and answer **y**, and it marks the job **User Applied**
 
 **It never submits without asking you first.**
 
