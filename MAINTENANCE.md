@@ -229,6 +229,7 @@ Profile files are executed as Python code. Never load untrusted profile files. I
 - No database - filesystem is the database
 - No authentication - localhost only
 - **Cross-origin writes blocked:** every POST/PUT/PATCH/DELETE needs an allowed `Origin` (or `Referer`); requests with neither (curl, scripts) pass. Allow-list: loopback on port 5175 plus `ADMIN_ALLOWED_ORIGINS`. New write routes are covered automatically by the test that sweeps the URL map
+- **CSRF tokens:** every write also needs `X-CSRF-Token` (or a `csrf_token` form field) holding a token from `GET /api/csrf-token`. Tokens are single-use and expire after 10 minutes. The UI's `csrfFetch()` fetches one per write; scripts calling the API must do the same
 
 ### Two modes
 - **Local** (default): Profile dropdown, single-user view

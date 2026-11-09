@@ -235,7 +235,7 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 
 | # | Scenario | Expected |
 |---|----------|----------|
-| 15.1 | Every route (33): 18 GET, 15 mutating | Success shape, 404 for unknown profiles where the route has one, filters work |
+| 15.1 | Every route (34): 19 GET, 15 mutating | Success shape, 404 for unknown profiles where the route has one, filters work |
 | 15.2 | Profile segment `%2E%2E` on profile-scoped routes | 400; nothing from outside `output/` is returned |
 | 15.3 | Resume filename `..` | 404, not a 500 |
 | 15.4 | Ledger check | The server's routes equal `docs/API_ROUTE_AUDIT_LEDGER.md`; each is covered or listed as phase-2 pending |
@@ -246,3 +246,4 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 15.9 | Profile/role/resume writes | Create (sanitized name, 409 duplicate, 400 bad name), role add/update/delete, upload (sanitized PDF name, non-PDF 400), deletes keep output data |
 | 15.10 | Bad input | Non-numeric settings or salaries → 400; malformed form config → 400; writes to `__init__`/`example_profile` → 403 |
 | 15.11 | Cross-origin write | Upload/PATCH/DELETE with `Origin: https://evil.example`, a cross-site Referer, `Origin: null` or another localhost port → 403 and nothing written; same-origin and no-Origin clients pass; `ADMIN_ALLOWED_ORIGINS` extends the list |
+| 15.12 | CSRF token | Same-origin write without a token, with a forged token, a replayed token or an expired token → 403 and nothing written; a valid token works once; a valid token from the wrong Origin is still 403 |

@@ -75,6 +75,27 @@ def write_jobs(server, root):
     atomic_io.atomic_write_csv(out / "browser_jobs.csv", [b], server.BROWSER_COLUMNS)
 
 
+def token_client(server):
+    """Test client that, like the UI, fetches a fresh CSRF token for every
+    write. Pass csrf=False to send a write without one, or csrf="<token>"."""
+    from flask.testing import FlaskClient
+
+    class TokenClient(FlaskClient):
+        def open(self, *args, **kwargs):
+            csrf = kwargs.pop("csrf", True)
+            method = (kwargs.get("method") or "GET").upper()
+            if method in ("POST", "PUT", "PATCH", "DELETE") and csrf is not False:
+                headers = dict(kwargs.pop("headers", None) or {})
+                if "X-CSRF-Token" not in headers:
+                    token = csrf if isinstance(csrf, str) else super().open("/api/csrf-token").get_json()["token"]
+                    headers["X-CSRF-Token"] = token
+                kwargs["headers"] = headers
+            return super().open(*args, **kwargs)
+
+    server.app.test_client_class = TokenClient
+    return server.app.test_client()
+
+
 def server_routes(server):
     seen = set()
     for rule in server.app.url_map.iter_rules():
@@ -97,7 +118,7 @@ def run():
     import server  # the temp copy
     assert Path(server.__file__).resolve().is_relative_to(root), server.__file__
     write_jobs(server, root)
-    c = server.app.test_client()
+    c = token_client(server)
     results = []
 
     def case(route, name, fn):
@@ -332,6 +353,50 @@ def run():
             (root / "output" / "synthetic" / "resumes" / "proxied.pdf").unlink(missing_ok=True)
         assert upload({"Origin": "https://jobs.example.test"}) == 403, "removed from env -> blocked again"
     case("(origin)", "ADMIN_ALLOWED_ORIGINS extends the allow-list", env_allow_list)
+
+    # ── CSRF tokens (WM-JH-UPLOAD-CSRF-01) ──
+    rt = cover("GET", "/api/csrf-token")
+    SAME = {"Origin": "http://localhost:5175"}
+    def token_issue():
+        a, b = get("/api/csrf-token")[1], get("/api/csrf-token")[1]
+        assert len(a["token"]) >= 32 and a["token"] != b["token"] and a["expires_in"] > 0, (a, b)
+    case(rt, "issues distinct random tokens", token_issue)
+    def missing_token():
+        before = resume.read_bytes()
+        r = c.post("/api/resumes/synthetic/upload", headers=SAME, csrf=False, content_type="multipart/form-data",
+                   data={"file": (io.BytesIO(b"%PDF-1.4 x"), "synthetic.pdf")})
+        assert r.status_code == 403 and "CSRF" in r.get_json()["error"], r.status_code
+        assert resume.read_bytes() == before, "written without a token"
+        assert c.patch("/api/jobs/synthetic/0", json={"Notes": "x"}, headers=SAME, csrf=False).status_code == 403, "PATCH without token"
+    case("(csrf)", "same-origin write without a token -> 403, nothing written", missing_token)
+    case("(csrf)", "forged token -> 403", lambda: assert_(c.patch("/api/jobs/synthetic/0", json={"Notes": "x"}, headers=SAME, csrf="forged-token-value").status_code == 403, "forged token"))
+    def replay():
+        t = get("/api/csrf-token")[1]["token"]
+        assert c.patch("/api/jobs/synthetic/0", json={"Notes": "once"}, headers=SAME, csrf=t).status_code == 200, "first use"
+        assert c.patch("/api/jobs/synthetic/0", json={"Notes": "twice"}, headers=SAME, csrf=t).status_code == 403, "replay must be 403"
+        assert get("/api/jobs/synthetic")[1]["jobs"][0]["Notes"] == "once", "replayed write must not land"
+    case("(csrf)", "a token works once; replay -> 403", replay)
+    def expiry():
+        t = get("/api/csrf-token")[1]["token"]
+        real = server._csrf_clock
+        server._csrf_clock = lambda: real() + server.CSRF_TTL_SECONDS + 1
+        try:
+            assert c.patch("/api/jobs/synthetic/0", json={"Notes": "late"}, headers=SAME, csrf=t).status_code == 403, "expired token"
+        finally:
+            server._csrf_clock = real
+    case("(csrf)", "expired token -> 403", expiry)
+    def form_field_token():
+        t = get("/api/csrf-token")[1]["token"]
+        r = c.post("/api/resumes/synthetic/upload", headers=SAME, csrf=False, content_type="multipart/form-data",
+                   data={"csrf_token": t, "file": (io.BytesIO(PDF_BYTES), "field-token.pdf")})
+        assert r.status_code == 200, r.status_code
+        (root / "output" / "synthetic" / "resumes" / "field-token.pdf").unlink()
+    case("(csrf)", "token in a csrf_token form field also works", form_field_token)
+    def both_layers():
+        t = get("/api/csrf-token")[1]["token"]
+        assert c.patch("/api/jobs/synthetic/0", json={"Notes": "x"}, headers=EVIL, csrf=t).status_code == 403, "valid token, wrong origin"
+        assert c.patch("/api/jobs/synthetic/0", json={"Notes": "both ok"}, headers=SAME).status_code == 200, "same origin + valid token"
+    case("(csrf)", "valid token can't bypass the Origin check; both together pass", both_layers)
 
     rt = cover("PATCH", "/api/profiles/<name>/search-settings")
     def settings_ok():

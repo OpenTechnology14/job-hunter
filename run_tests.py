@@ -1055,7 +1055,8 @@ def test_generate_resume_route_gone():
         "import subprocess\n"
         "subprocess.run = lambda *a, **k: (_ for _ in ()).throw(AssertionError('spawned'))\n"
         "c = server.app.test_client()\n"
-        "r = c.post('/api/ai-training/someone/generate-resume')\n"
+        "tok = lambda: {'X-CSRF-Token': c.get('/api/csrf-token').get_json()['token']}\n"
+        "r = c.post('/api/ai-training/someone/generate-resume', headers=tok())\n"
         "print(json.dumps({'status': r.status_code, 'body': r.get_json()}))\n"
     )
     root = ROOT
@@ -1282,9 +1283,10 @@ def test_admin_job_patch_routes_locked():
         "rows[0]['Job Title'] = 'A'; rows[1]['Job Title'] = 'B'; rows[2]['Job Title'] = 'C'\n"
         "atomic_io.atomic_write_csv(jobs, [dict(r, **{'My Notes': 'keep'}) for r in rows], server.SHEET_COLUMNS)\n"
         "c = server.app.test_client()\n"
-        "r1 = c.patch('/api/jobs/synthetic/1', json={'Apply': 'Y', 'Not A Column': 'x'})\n"
-        "r2 = c.patch('/api/jobs/synthetic/9', json={'Apply': 'Y'})\n"
-        "r3 = c.patch('/api/jobs/synthetic/bulk', json={'indices': [0, 2, 7], 'updates': {'Notes': 'n'}})\n"
+        "tok = lambda: {'X-CSRF-Token': c.get('/api/csrf-token').get_json()['token']}\n"
+        "r1 = c.patch('/api/jobs/synthetic/1', json={'Apply': 'Y', 'Not A Column': 'x'}, headers=tok())\n"
+        "r2 = c.patch('/api/jobs/synthetic/9', json={'Apply': 'Y'}, headers=tok())\n"
+        "r3 = c.patch('/api/jobs/synthetic/bulk', json={'indices': [0, 2, 7], 'updates': {'Notes': 'n'}}, headers=tok())\n"
         "final = atomic_io.read_csv_rows(jobs)\n"
         "print(json.dumps({'r1': [r1.status_code, r1.get_json()['row']['Apply']], 'r2': r2.status_code,\n"
         "  'r3': [r3.status_code, r3.get_json()['updated']], 'apply': [x['Apply'] for x in final],\n"
@@ -1303,7 +1305,7 @@ def test_admin_job_patch_routes_locked():
 
 
 def test_admin_route_contracts():
-    """JH-013: all 33 admin routes against a temp project tree, plus path safety and the ledger check."""
+    """JH-013: all 34 admin routes against a temp project tree, plus Origin/CSRF, path safety and the ledger check."""
     import subprocess
     try:
         import flask  # noqa: F401
@@ -1315,7 +1317,7 @@ def test_admin_route_contracts():
     data = json.loads(proc.stdout.strip().splitlines()[-1])
     failed = [f"{r['route']} | {r['case']}: {r.get('error', '')[:160]}" for r in data["results"] if not r["ok"]]
     assert not failed, "\n    ".join(failed)
-    assert data["covered"] == 33 and data["pending"] == 0, data
+    assert data["covered"] == 34 and data["pending"] == 0, data
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1403,7 +1405,7 @@ def main():
 
     if run_routes:
         print(f"\n── Admin Route Contracts (offline, temp project tree) ──")
-        runner.run("Admin routes (all 33) + path safety + ledger (JH-013)", test_admin_route_contracts)
+        runner.run("Admin routes (all 34) + Origin/CSRF + path safety + ledger (JH-013)", test_admin_route_contracts)
 
     print(f"\n── Config Tests ──")
     runner.run("Admin server exists", test_admin_imports)
