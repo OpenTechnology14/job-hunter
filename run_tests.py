@@ -16,6 +16,7 @@ Usage:
     python run_tests.py --matcher        # Matcher logic tests only
     python run_tests.py --storage        # CSV storage tests only
     python run_tests.py --safety         # Submission-safety tests only (offline, fake page)
+    python run_tests.py --routes         # Admin route contract tests (offline, temp project tree)
     python run_tests.py --all            # Every group, offline + live
     python run_tests.py -v               # Verbose output
 """
@@ -1054,7 +1055,8 @@ def test_generate_resume_route_gone():
         "import subprocess\n"
         "subprocess.run = lambda *a, **k: (_ for _ in ()).throw(AssertionError('spawned'))\n"
         "c = server.app.test_client()\n"
-        "r = c.post('/api/ai-training/someone/generate-resume')\n"
+        "tok = lambda: {'X-CSRF-Token': c.get('/api/csrf-token').get_json()['token']}\n"
+        "r = c.post('/api/ai-training/someone/generate-resume', headers=tok())\n"
         "print(json.dumps({'status': r.status_code, 'body': r.get_json()}))\n"
     )
     root = ROOT
@@ -1065,6 +1067,341 @@ def test_generate_resume_route_gone():
     result = json.loads(proc.stdout.strip().splitlines()[-1])
     assert result["status"] == 410, f"expected 410 Gone, got {result}"
     assert "Resumes page" in (result["body"] or {}).get("error", ""), f"unhelpful error: {result}"
+
+
+def test_admin_debug_off_by_default():
+    """JH-011: the Flask debugger is off unless --debug / ADMIN_DEBUG=1 is given."""
+    code = (
+        "import sys, json; sys.path.insert(0, 'admin'); import server\n"
+        "seen = {}\n"
+        "server.main(argv=['server.py'], env={}, run=lambda **kw: seen.update(kw))\n"
+        "print(json.dumps({'default': seen.get('debug'), 'host': seen.get('host'),\n"
+        "  'flag': server.debug_enabled(['server.py', '--debug'], {}),\n"
+        "  'env': server.debug_enabled(['server.py'], {'ADMIN_DEBUG': '1'}),\n"
+        "  'other_env': server.debug_enabled(['server.py'], {'ADMIN_DEBUG': 'true'})}))\n"
+    )
+    proc, _ = _run_isolated_python(code, {"PYTHONPATH": str(ROOT) + os.pathsep + str(ROOT / "admin")})
+    if "No module named 'flask'" in proc.stderr:
+        raise SkipTest("flask not installed")
+    assert proc.returncode == 0, f"server import/main failed: {proc.stderr[-400:]}"
+    r = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert r["default"] is False, f"debug must default to False, got {r['default']}"
+    assert r["host"] == "127.0.0.1", f"must bind loopback, got {r['host']}"
+    assert r["flag"] is True and r["env"] is True, "explicit opt-in must enable debug"
+    assert r["other_env"] is False, "only ADMIN_DEBUG=1 enables debug"
+
+
+def _guard(dry_run=False, answers=("",), now=None):
+    """SubmissionGuard with scripted answers and a controllable clock."""
+    from submission_guard import SubmissionGuard
+    clock = now if now is not None else [0.0]
+    queue = list(answers)
+    asked = []
+    def confirm(prompt):
+        asked.append(prompt)
+        return queue.pop(0) if queue else ""
+    g = SubmissionGuard(dry_run=dry_run, ttl_seconds=60, clock=lambda: clock[0], confirm=confirm)
+    return g, asked, clock
+
+
+def test_guard_dry_run_cannot_mint_or_click():
+    """JH-003: dry-run never asks, never mints a token, never calls the click."""
+    g, asked, _ = _guard(dry_run=True)
+    clicks = []
+    token = g.request_confirmation("job-a", "fp1")
+    assert token is None and asked == [], "dry-run must not prompt or mint"
+    assert g.submit_once(token, "job-a", "fp1", lambda: clicks.append(1)) is False
+    assert clicks == [], "dry-run clicked"
+
+
+def test_guard_token_single_use_and_scoped():
+    """JH-003 / GAP-JH-05: one click per confirmation, bound to its job and page."""
+    g, _, _ = _guard(answers=("", "", "", "s"))
+    clicks = []
+    t = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append("a")) is True
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append("a2")) is False, "replay submitted"
+    t2 = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t2, "job-b", "fp1", lambda: clicks.append("b")) is False, "reused on another job"
+    assert g.submit_once(t2, "job-a", "fp1", lambda: clicks.append("a3")) is False, "token survived a refusal"
+    t3 = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(t3, "job-a", "fp2", lambda: clicks.append("c")) is False, "page change not detected"
+    assert g.request_confirmation("job-a", "fp1") is None, "'s' must cancel"
+    assert clicks == ["a"], f"clicks: {clicks}"
+
+
+def test_guard_expiry_and_invalidation():
+    """JH-003: tokens expire, and navigation or a newer confirmation voids older ones."""
+    g, _, clock = _guard(answers=("", "", "", ""))
+    clicks = []
+    t = g.request_confirmation("job-a", "fp1")
+    clock[0] += 61
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append(1)) is False, "expired token submitted"
+    t = g.request_confirmation("job-a", "fp1")
+    g.invalidate()  # what apply_to_job does on navigation
+    assert g.submit_once(t, "job-a", "fp1", lambda: clicks.append(2)) is False, "survived navigation"
+    old = g.request_confirmation("job-a", "fp1")
+    new = g.request_confirmation("job-a", "fp1")
+    assert g.submit_once(old, "job-a", "fp1", lambda: clicks.append(3)) is False, "older token still live"
+    # Fail-closed: the refused stale attempt also voided the newer token.
+    assert g.submit_once(new, "job-a", "fp1", lambda: clicks.append(4)) is False, "refusal must void the live token"
+    t = g.request_confirmation("job-a", "fp1")
+    assert t is not None and g.submit_once(t, "job-a", "fp1", lambda: clicks.append(5)) is True
+    assert clicks == [5], f"clicks: {clicks}"
+
+
+def test_easy_apply_refuses_if_page_changes_after_confirm():
+    """JH-003: if the page navigates between the SUBMIT answer and the click, nothing is submitted."""
+    ba = _import_browser_apply_isolated()
+    page = _FakeApplyPage(["Submit application"])
+    page.url = "https://jobs.example.test/apply/1"
+    import builtins
+    original = builtins.input
+    answers = iter(["", ""])
+    def answer_then_navigate(prompt=""):
+        if "SUBMIT" in prompt:
+            page.url = "https://jobs.example.test/apply/2"  # page changed under us
+        return next(answers, "")
+    builtins.input = answer_then_navigate
+    try:
+        import io, contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = ba.handle_easy_apply(page, "", dry_run=False)
+    finally:
+        builtins.input = original
+    assert result is False, "must not report a submission"
+    assert "Submit application" not in page.clicks, f"clicked Submit after the page changed: {page.clicks}"
+
+
+def test_atomic_write_fault_keeps_original():
+    """JH-010 / GAP-JH-08: a failure before os.replace leaves the old file intact, no temp residue."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    atomic_io.atomic_write_csv(target, [{"Job Title": "Original"}], ["Job Title"])
+    before = target.read_bytes()
+    real = atomic_io.os.replace
+    def boom(*a, **k):
+        raise OSError("simulated crash before replace")
+    atomic_io.os.replace = boom
+    try:
+        try:
+            atomic_io.atomic_write_csv(target, [{"Job Title": "New"}], ["Job Title"])
+            raise AssertionError("write should have raised")
+        except OSError:
+            pass
+    finally:
+        atomic_io.os.replace = real
+    assert target.read_bytes() == before, "original file was modified"
+    leftovers = [p.name for p in d.iterdir() if p.name != "jobs.csv"]
+    assert leftovers == [], f"temp residue left behind: {leftovers}"
+
+
+def test_atomic_write_keeps_permissions_and_user_columns():
+    """JH-010: rewrites keep the file mode and any column the user added."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    atomic_io.atomic_write_csv(target, [{"Job Title": "A", "My Notes": "keep me"}], ["Job Title"])
+    os.chmod(target, 0o600)
+    rows = atomic_io.read_csv_rows(target)
+    rows[0]["Job Title"] = "A2"
+    atomic_io.atomic_write_csv(target, rows, ["Job Title"])
+    assert (target.stat().st_mode & 0o777) == 0o600, oct(target.stat().st_mode & 0o777)
+    again = atomic_io.read_csv_rows(target)
+    assert again == [{"Job Title": "A2", "My Notes": "keep me"}], again
+
+
+def test_locked_update_concurrent_writers():
+    """JH-010 / GAP-JH-07: concurrent read-modify-writes on different rows lose nothing."""
+    import atomic_io, threading
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "jobs.csv"
+    cols = ["URL", "Count"]
+    atomic_io.atomic_write_csv(target, [{"URL": f"u{i}", "Count": "0"} for i in range(8)], cols)
+    errors = []
+    def worker(i):
+        try:
+            for _ in range(25):
+                def bump(rows, i=i):
+                    rows[i]["Count"] = str(int(rows[i]["Count"]) + 1)
+                    return rows
+                atomic_io.locked_update_csv(target, cols, bump)
+        except Exception as e:  # surfaced below
+            errors.append(repr(e))
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for t in threads: t.start()
+    for t in threads: t.join(60)
+    assert not errors, errors
+    counts = [r["Count"] for r in atomic_io.read_csv_rows(target)]
+    assert counts == ["25"] * 8, f"lost updates: {counts}"
+
+
+def test_corrupt_json_is_not_overwritten():
+    """JH-010: a corrupt JSON file fails visibly instead of being replaced by the default."""
+    import atomic_io
+    d = Path(tempfile.mkdtemp(prefix="jh-atomic-")); atexit.register(shutil.rmtree, d, ignore_errors=True)
+    target = d / "run_log.json"
+    target.write_text("{not json")
+    try:
+        atomic_io.locked_update_json(target, list, lambda log: log + [{"x": 1}])
+        raise AssertionError("corrupt JSON was silently replaced")
+    except json.JSONDecodeError:
+        pass
+    assert target.read_text() == "{not json", "corrupt file was modified"
+
+
+def test_local_sync_mark_applied_locked_and_keeps_columns():
+    """JH-010: local_sync.mark_applied rewrites atomically under jobs.csv.lock and keeps user columns."""
+    import local_sync
+    jobs = local_sync.JOBS_FILE
+    jobs.parent.mkdir(parents=True, exist_ok=True)
+    header = list(local_sync.SHEET_COLUMNS) + ["My Notes"]
+    row = {c: "" for c in header}
+    row.update({"Job Title": "Synthetic Role", "URL": "https://example.test/1", "Apply": "Y", "My Notes": "keep me"})
+    import atomic_io
+    atomic_io.atomic_write_csv(jobs, [row], header)
+    import io, contextlib
+    with contextlib.redirect_stdout(io.StringIO()):
+        local_sync.mark_applied(None, 0, "synthetic.pdf")
+    out = atomic_io.read_csv_rows(jobs)
+    assert out[0]["Apply"] == "Auto Applied" and out[0]["Resume Version"] == "synthetic.pdf", out[0]
+    assert out[0]["My Notes"] == "keep me", "user column lost"
+    assert Path(f"{jobs}.lock").exists(), "mark_applied did not take the jobs.csv lock"
+    assert str(jobs.resolve()).startswith(str(TEST_HOME.resolve())), f"wrote outside the temp home: {jobs.resolve()}"
+
+
+def test_admin_job_patch_routes_locked():
+    """JH-010: PATCH /api/jobs (single + bulk) still work through the locked rewrite; bad index -> 400."""
+    code = (
+        "import sys, json, tempfile, pathlib; sys.path.insert(0, 'admin'); import server, atomic_io\n"
+        "out = pathlib.Path(tempfile.mkdtemp(prefix='jh-admin-'))\n"
+        "import atexit, shutil; atexit.register(shutil.rmtree, out, ignore_errors=True)\n"
+        "server.OUTPUT_DIR = out\n"
+        "jobs = out / 'synthetic' / 'jobs.csv'\n"
+        "rows = [{c: '' for c in server.SHEET_COLUMNS} for _ in range(3)]\n"
+        "rows[0]['Job Title'] = 'A'; rows[1]['Job Title'] = 'B'; rows[2]['Job Title'] = 'C'\n"
+        "atomic_io.atomic_write_csv(jobs, [dict(r, **{'My Notes': 'keep'}) for r in rows], server.SHEET_COLUMNS)\n"
+        "c = server.app.test_client()\n"
+        "tok = lambda: {'X-CSRF-Token': c.get('/api/csrf-token').get_json()['token']}\n"
+        "r1 = c.patch('/api/jobs/synthetic/1', json={'Apply': 'Y', 'Not A Column': 'x'}, headers=tok())\n"
+        "r2 = c.patch('/api/jobs/synthetic/9', json={'Apply': 'Y'}, headers=tok())\n"
+        "r3 = c.patch('/api/jobs/synthetic/bulk', json={'indices': [0, 2, 7], 'updates': {'Notes': 'n'}}, headers=tok())\n"
+        "final = atomic_io.read_csv_rows(jobs)\n"
+        "print(json.dumps({'r1': [r1.status_code, r1.get_json()['row']['Apply']], 'r2': r2.status_code,\n"
+        "  'r3': [r3.status_code, r3.get_json()['updated']], 'apply': [x['Apply'] for x in final],\n"
+        "  'notes': [x['Notes'] for x in final], 'mine': [x['My Notes'] for x in final],\n"
+        "  'bogus': 'Not A Column' in final[1], 'lock': (jobs.parent / 'jobs.csv.lock').exists()}))\n"
+    )
+    proc, _ = _run_isolated_python(code, {"PYTHONPATH": str(ROOT) + os.pathsep + str(ROOT / "admin")})
+    if "No module named 'flask'" in proc.stderr:
+        raise SkipTest("flask not installed")
+    assert proc.returncode == 0, f"admin test failed: {proc.stderr[-500:]}"
+    r = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert r["r1"] == [200, "Y"] and r["r2"] == 400, r
+    assert r["r3"] == [200, 2], r
+    assert r["apply"] == ["", "Y", ""] and r["notes"] == ["n", "", "n"], r
+    assert r["mine"] == ["keep"] * 3 and r["bogus"] is False and r["lock"] is True, r
+
+
+def test_admin_route_contracts():
+    """JH-013: all 34 admin routes against a temp project tree, plus Origin/CSRF, path safety and the ledger check."""
+    import subprocess
+    try:
+        import flask  # noqa: F401
+    except ImportError:
+        raise SkipTest("flask not installed")
+    proc = subprocess.run([sys.executable, str(ROOT / "tests" / "admin_routes.py")],
+                          capture_output=True, text=True, timeout=120, cwd=str(TEST_HOME))
+    assert proc.returncode == 0, f"harness crashed: {proc.stderr[-600:]}"
+    data = json.loads(proc.stdout.strip().splitlines()[-1])
+    failed = [f"{r['route']} | {r['case']}: {r.get('error', '')[:160]}" for r in data["results"] if not r["ok"]]
+    assert not failed, "\n    ".join(failed)
+    assert data["covered"] == 34 and data["pending"] == 0, data
+
+
+def test_apply_status_classify_and_migrate():
+    """JH-D07: labels classify correctly; migration keeps every row, Done -> Auto Applied, ambiguous rows tagged."""
+    from apply_status import classify, is_protected, migrate_rows, NEEDS_REVIEW_TAG
+    expect = {"Auto Applied": "auto_applied", "User Applied": "user_applied", "✅ User Applied": "user_applied",
+              "Done": "auto_applied", "Done 2026-10-01": "auto_applied", "✅ Applied": "auto_applied",
+              "Y": "approved", "n": "rejected", "": "pending"}
+    for v, k in expect.items():
+        assert classify(v) == k, f"{v!r} -> {classify(v)} (expected {k})"
+    assert all(is_protected(v) for v in ("Y", "Auto Applied", "User Applied", "Done")) and not is_protected("N")
+    rows = [{"Job Title": "A", "Apply": "Done", "Apply Method": "⚡ Easy Apply", "Notes": ""},
+            {"Job Title": "B", "Apply": "Done", "Apply Method": "📋 Form Fill", "Notes": "keep this"},
+            {"Job Title": "C", "Apply": "Y", "Apply Method": "", "Notes": ""},
+            {"Job Title": "D", "Apply": "User Applied", "Apply Method": "📋 Form Fill", "Notes": ""}]
+    out, summary = migrate_rows(rows)
+    assert [r["Job Title"] for r in out] == ["A", "B", "C", "D"], "rows must be preserved in order"
+    assert [r["Apply"] for r in out] == ["Auto Applied", "Auto Applied", "Y", "User Applied"], out
+    assert NEEDS_REVIEW_TAG in out[1]["Notes"] and out[1]["Notes"].startswith("keep this"), out[1]
+    assert NEEDS_REVIEW_TAG not in out[0]["Notes"], "Easy Apply rows aren't ambiguous"
+    assert summary == {"rows": 4, "migrated": 2, "needs_review": 1}, summary
+    again, s2 = migrate_rows(out)
+    assert again == out and s2["migrated"] == 0, "migration must be idempotent"
+    assert rows[0]["Apply"] == "Done", "input rows must not be mutated"
+
+
+class _FakeJobPage(_FakeApplyPage):
+    """A job page apply_to_job can navigate to: Easy Apply or a generic form."""
+    def __init__(self, kind):
+        super().__init__(["Submit application"])
+        self.kind = kind
+        self.url = "https://jobs.example.test/apply/1"
+    def goto(self, url, **kw):
+        self.url = url
+    def content(self):
+        return "<html>easy apply</html>" if self.kind == "easy" else "<html>application form</html>"
+
+
+def _apply(ba, kind, answers, dry_run=False):
+    page = _FakeJobPage(kind)
+    job = {"url": "https://jobs.example.test/apply/1", "title": "Synthetic Role", "company": "Acme Test"}
+    result, _ = _run_quietly(ba.apply_to_job, answers, page, job, dry_run)
+    return result, page
+
+
+def test_auto_vs_user_applied_detection():
+    """JH-D07: Job Hunter's guarded click -> auto_applied; user submit after prefill -> user_applied; otherwise unmarked."""
+    ba = _import_browser_apply_isolated()
+    from apply_status import ApplyStatus
+    r, page = _apply(ba, "easy", ["", ""])           # proceed, then confirm SUBMIT
+    assert r["status"] == ApplyStatus.AUTO_APPLIED and "Submit application" in page.clicks, (r, page.clicks)
+    r, page = _apply(ba, "form", ["y"])               # user says they clicked Submit
+    assert r["status"] == ApplyStatus.USER_APPLIED and r["success"] and page.clicks == [], (r, page.clicks)
+    r, _ = _apply(ba, "form", [""])                   # didn't submit
+    assert r["status"] is None and not r["success"], r
+    r, _ = _apply(ba, "easy", ["", "s"])              # skipped at SUBMIT
+    assert r["status"] is None, r
+    r, _ = _apply(ba, "form", [""], dry_run=True)
+    assert r["status"] is None, r
+
+
+def test_mark_applied_labels_and_cleanup_protection():
+    """JH-D07: mark_applied writes the right label; stale cleanup keeps both applied values and legacy Done."""
+    import local_sync, atomic_io
+    from apply_status import ApplyStatus
+    jobs = local_sync.JOBS_FILE
+    jobs.parent.mkdir(parents=True, exist_ok=True)
+    old = "2020-01-01"
+    def row(title, apply_):
+        r = {c: "" for c in local_sync.SHEET_COLUMNS}
+        r.update({"Job Title": title, "Apply": apply_, "Date Posted": old, "Date Found": old, "URL": f"https://jobs.example.test/{title}"})
+        return r
+    atomic_io.atomic_write_csv(jobs, [row("a", "Y"), row("b", "")], local_sync.SHEET_COLUMNS)
+    import io, contextlib
+    with contextlib.redirect_stdout(io.StringIO()):
+        local_sync.mark_applied(None, 0, "", status=ApplyStatus.USER_APPLIED)
+        local_sync.mark_applied(None, 1, "")          # default -> Auto Applied
+    assert [r["Apply"] for r in atomic_io.read_csv_rows(jobs)] == ["User Applied", "Auto Applied"]
+    atomic_io.atomic_write_csv(jobs, [row("u", "User Applied"), row("a", "Auto Applied"), row("d", "Done"),
+                                      row("y", "Y"), row("blank", ""), row("no", "N")], local_sync.SHEET_COLUMNS)
+    with _patched(local_sync, SEARCH_SETTINGS={"stale_days": 21}), contextlib.redirect_stdout(io.StringIO()):
+        removed = local_sync.cleanup_stale_jobs()
+    left = [r["Job Title"] for r in atomic_io.read_csv_rows(jobs)]
+    assert left == ["u", "a", "d", "y"] and removed == 2, f"left={left} removed={removed}"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1083,6 +1420,7 @@ def main():
     run_storage = "--storage" in args or "--all" in args or not args
     run_browser = "--browser" in args or "--all" in args
     run_safety = "--safety" in args or "--all" in args or not args
+    run_routes = "--routes" in args or "--all" in args or not args
 
     runner = TestRunner(verbose=verbose)
 
@@ -1117,6 +1455,12 @@ def main():
         runner.run("CSV dedup", test_csv_dedup)
         runner.run("CSV column order", test_csv_column_order)
         runner.run("Stale job cleanup", test_stale_cleanup)
+        runner.run("Atomic write: fault keeps original (JH-010)", test_atomic_write_fault_keeps_original)
+        runner.run("Atomic write: mode + user columns kept (JH-010)", test_atomic_write_keeps_permissions_and_user_columns)
+        runner.run("Locked update: concurrent writers (JH-010)", test_locked_update_concurrent_writers)
+        runner.run("Corrupt JSON not overwritten (JH-010)", test_corrupt_json_is_not_overwritten)
+        runner.run("local_sync.mark_applied locked (JH-010)", test_local_sync_mark_applied_locked_and_keeps_columns)
+        runner.run("Admin job PATCH routes locked (JH-010)", test_admin_job_patch_routes_locked)
 
     if run_api:
         print(f"\n── Web Search Tests ──")
@@ -1138,6 +1482,17 @@ def main():
         runner.run("Dry-run Easy Apply never clicks Submit", test_dry_run_easy_apply_never_clicks_submit)
         runner.run("Dry-run form apply clicks nothing", test_dry_run_form_apply_clicks_nothing)
         runner.run("Live submit needs explicit confirmation", test_live_submit_requires_explicit_confirmation)
+        runner.run("Guard: dry-run cannot mint or click (JH-003)", test_guard_dry_run_cannot_mint_or_click)
+        runner.run("Guard: single-use, job/page-scoped (GAP-JH-05)", test_guard_token_single_use_and_scoped)
+        runner.run("Guard: expiry and invalidation (JH-003)", test_guard_expiry_and_invalidation)
+        runner.run("Easy Apply refuses after page change (JH-003)", test_easy_apply_refuses_if_page_changes_after_confirm)
+        runner.run("Apply status: classify + migration (JH-D07)", test_apply_status_classify_and_migrate)
+        runner.run("Auto vs User Applied detection (JH-D07)", test_auto_vs_user_applied_detection)
+        runner.run("mark_applied labels + cleanup keeps applied (JH-D07)", test_mark_applied_labels_and_cleanup_protection)
+
+    if run_routes:
+        print(f"\n── Admin Route Contracts (offline, temp project tree) ──")
+        runner.run("Admin routes (all 34) + Origin/CSRF + path safety + ledger (JH-013)", test_admin_route_contracts)
 
     print(f"\n── Config Tests ──")
     runner.run("Admin server exists", test_admin_imports)
@@ -1145,6 +1500,7 @@ def main():
     runner.run("Example profile", test_example_profile)
     runner.run("No profile -> clear error (JH-016)", test_no_profile_gives_clear_error)
     runner.run("Generate-resume route is 410 (JH-015)", test_generate_resume_route_gone)
+    runner.run("Admin debug off by default (JH-011)", test_admin_debug_off_by_default)
 
     all_passed = runner.summary()
     sys.exit(0 if all_passed else 1)

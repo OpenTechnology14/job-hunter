@@ -355,3 +355,27 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 **Not yet covered (still Proposed):** `SubmissionGuard` tokens (GAP-JH-05: no single-use, per-job/page confirmation exists, only a per-prompt `input()`); typed outcomes (GAP-JH-06: live `handle_form_apply` still returns `True` on "Enter when done" without observing a submit); and the `apply_to_job` "manual" path. These tests characterize today's behavior. When the guard lands, they become regression tests against it.
 
 **Next concrete step:** add `SubmissionGuard` (§7.2) behind the existing prompts. That means one token per job ID plus page fingerprint, consumed once, impossible to mint in dry-run. Then extend these fake-page tests to GAP-JH-05. It needs no owner decision and stays outside the hosted track.
+
+### 2026-11-04 — JH-WP2 step 2: SubmissionGuard (GAP-JH-05)
+
+**Verified:** `submission_guard.py` implements §7.2, and `browser_apply.handle_easy_apply` now routes its only Submit click through `SubmissionGuard.submit_once`. Tokens are single-use, bound to the job (URL) and a page fingerprint (URL plus submit label), expire after 120 s, can't be minted in dry-run, and are voided by navigation (`apply_to_job`), a newer confirmation, or any refused attempt (fail-closed). `run_tests.py --safety` adds four tests: dry-run, single-use and scope (GAP-JH-05), expiry and invalidation, and a page change between confirmation and click. Removing each guard check makes at least two tests fail.
+
+**Not done:** typed outcomes (§7.1, GAP-JH-06) change what the Apply column shows for hand-finished forms, so they're held for owner decision JH-D07 in `docs/GAP_AUDIT.md`.
+
+**Next concrete step:** once JH-D07 is answered, add `ApplyState`/`ApplyOutcome` and the compatibility serializer from §14.
+
+### 2026-11-04 — JH-WP3 step 1: atomic, locked persistence (JH-010)
+
+**Verified:** `atomic_io.py` implements the §9 write contract (unique temp file in the target directory, fsync, mode kept, `os.replace`, residue removed on failure) and a cross-process per-file lock covering the whole read-modify-write. Every audited write path now uses it (see JH-010 in `docs/GAP_AUDIT.md`). `local_sync.push_jobs` rewrites under the lock instead of appending, so a crash can't tear a row. Columns a user added in their spreadsheet are kept rather than raising. Six new storage tests (GAP-JH-07 concurrent writers, GAP-JH-08 fault before replace, mode and columns, corrupt JSON, locked `mark_applied`, admin PATCH routes) pass, and removing each invariant fails at least two of them.
+
+**Next concrete step:** a stable `Job ID` (normalized source plus canonical URL) with ETag/409 for the index-addressed admin PATCH routes. That changes the admin API and its JavaScript, and needs no owner decision.
+
+### 2026-11-07 — JH-WP3 step 2: stable Job IDs and conflict detection
+
+**Verified:** `admin/server.py` adds `_id` (`j_` plus a SHA-256 prefix of the normalized source and canonical URL; title|company|date-found when there's no URL) and `_rev` (a hash of the row) to every job returned by `GET /api/jobs/<profile>`. `PATCH /api/jobs/<profile>/<index>` locates the row by `_id` when given (so a scrape that reorders the CSV can't redirect an edit), returns **409 conflict** with the current row on a stale `_rev`, 409 when duplicate rows share an id, and 404 when the job is gone. Bulk PATCH with `items` is all-or-nothing. Index-only requests still behave as before. The UI sends `_id`/`_rev`, keeps the new `_rev` after each save, and reloads on 409/404. Seven route cases cover this, and removing each guard fails at least one of them.
+
+**Not done:** ETag/`If-Match` headers. The revision travels in the JSON body instead, which the single-page UI already controls.
+
+### 2026-11-09 — JH-WP2 step 3: typed apply outcomes (§7.1, GAP-JH-06)
+
+**Verified:** `apply_status.py` defines `ApplyStatus.AUTO_APPLIED` / `USER_APPLIED` (owner's labels). `apply_to_job` returns the status: a guarded Easy Apply click gives Auto Applied; a prefilled form the user says they submitted (explicit **y**) gives User Applied; manual, skipped or dry-run is unmarked. Manual review is no longer recorded as an application unless the user confirms they submitted. The migration and protection rules are described in `docs/AUDIT.md` (2026-11-09). This closes GAP-JH-06.

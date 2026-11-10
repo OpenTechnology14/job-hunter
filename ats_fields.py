@@ -41,6 +41,8 @@ catalog fields whose pattern isn't in the config yet.
 import json
 from pathlib import Path
 
+from atomic_io import atomic_write_json, file_lock
+
 
 def _catalog(user_profile: dict) -> list[dict]:
     """The full field catalog, with values resolved from the profile."""
@@ -264,6 +266,14 @@ def build_form_config(user_profile: dict) -> dict:
 
 
 def seed_form_config(profile: str, user_profile: dict, reset: bool = False) -> dict:
+    """Locked wrapper (JH-010): the read-merge-write of form_config.json runs
+    under one lock so a concurrent admin edit can't be lost."""
+    path = Path(__file__).parent / "output" / profile / "form_config.json"
+    with file_lock(path):
+        return _seed_form_config_unlocked(profile, user_profile, reset)
+
+
+def _seed_form_config_unlocked(profile: str, user_profile: dict, reset: bool = False) -> dict:
     """
     Write/merge the catalog into output/{profile}/form_config.json.
     Merge appends catalog rules whose pattern isn't present yet —
@@ -292,8 +302,7 @@ def seed_form_config(profile: str, user_profile: dict, reset: bool = False) -> d
                     existing.append(rule)
                     added[section] += 1
 
-    with open(path, "w") as f:
-        json.dump(config, f, indent=2)
+    atomic_write_json(path, config)  # JH-010
 
     return {
         "path": str(path),

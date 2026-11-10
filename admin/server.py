@@ -11,23 +11,35 @@ Multi-user support:
 Usage:
     python admin/server.py              # local mode
     python admin/server.py --deployed   # deployed mode
+    python admin/server.py --debug      # Flask debugger + auto-reload (local development only)
+
+The Flask debugger is OFF unless --debug or ADMIN_DEBUG=1 is given (JH-011): its
+interactive console runs arbitrary Python for anyone who can reach the page.
 """
 import csv
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 # Add parent dir to path so we can import project modules
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
+
+from apply_status import classify as classify_apply, is_applied
+from atomic_io import (atomic_write_csv, atomic_write_json, atomic_write_text,
+                       file_lock, locked_update_csv, locked_update_json)
 
 app = Flask(__name__, static_folder="static")
 
@@ -53,6 +65,68 @@ BROWSER_COLUMNS = [
 ]
 
 
+# ── Stable job identity + revisions (JH-010 follow-up, proposal §9) ─────
+# Rows are still stored by position in the CSV, but a scrape can insert or
+# remove rows between the moment the UI loads a job and the moment it saves.
+# `_id` (from source + canonical URL) finds the right row regardless of
+# position; `_rev` (a hash of the row) detects that it changed meanwhile.
+
+def _canonical_url(url):
+    url = (url or "").strip()
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    query = urlencode(sorted((k, v) for k, v in parse_qsl(parts.query)
+                             if not k.lower().startswith("utm_")))
+    path = parts.path.rstrip("/") or "/"
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, query, ""))
+
+
+def _job_id(row):
+    url = _canonical_url(row.get("URL") or row.get("Job URL") or "")
+    if url:
+        key = f"{(row.get('Source') or '').strip().lower()}|{url}"
+    else:  # no URL: fall back to what identifies the posting in the sheet
+        key = "|".join((row.get(k) or "").strip().lower()
+                       for k in ("Job Title", "Company", "Date Found"))
+    return "j_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _job_rev(row):
+    data = json.dumps({k: v for k, v in row.items() if k and not k.startswith("_")},
+                      sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()[:12]
+
+
+def _with_identity(row, index):
+    return {**row, "_index": index, "_id": _job_id(row), "_rev": _job_rev(row)}
+
+
+def _locate(rows, job_id):
+    """Index of the row with this _id; None if missing; -1 if ambiguous."""
+    hits = [i for i, r in enumerate(rows) if _job_id(r) == job_id]
+    if not hits:
+        return None
+    return hits[0] if len(hits) == 1 else -1
+
+
+def _as_int(value, field):
+    """int() for request fields; raises BadInput (-> 400) instead of a 500."""
+    try:
+        return int(value) if value not in (None, "") else 0
+    except (TypeError, ValueError):
+        raise BadInput(f"{field} must be a whole number")
+
+
+class BadInput(ValueError):
+    pass
+
+
+@app.errorhandler(BadInput)
+def _bad_input(e):
+    return jsonify({"error": str(e)}), 400
+
+
 def _list_profiles():
     """List available profile names."""
     profiles = []
@@ -76,11 +150,8 @@ def _read_csv(filepath, columns=None):
 
 
 def _write_csv(filepath, rows, columns):
-    """Write list of dicts to CSV."""
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
+    """Atomically write list of dicts to CSV (JH-010); keeps user-added columns."""
+    atomic_write_csv(filepath, rows, columns)
 
 
 def _load_profile_module(name):
@@ -117,12 +188,133 @@ def _read_run_log(profile):
 
 
 def _append_run_log(profile, entry):
-    log = _read_run_log(profile)
-    log.append(entry)
-    path = _run_log_path(profile)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(log, f, indent=2)
+    """Locked read-append-write so two finishing scrapes can't drop an entry."""
+    locked_update_json(_run_log_path(profile), list, lambda log: log + [entry])
+
+
+# ── Path-segment validation (trust boundary) ────────────
+# Every <profile>/<name> segment becomes a directory under output/ or a file
+# under profiles/. Without this check "%2E%2E" resolved outside output/ and
+# could read or write files there (found by tests/admin_routes.py, JH-013).
+
+PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
+# Files in profiles/ the API must never modify or delete: the package marker
+# and the placeholder template the tests and docs depend on.
+RESERVED_PROFILES = {"__init__", "example_profile"}
+
+
+# ── Cross-origin write protection (WM-JH-UPLOAD-ORIGIN-01) ───────────────
+# There is no CSRF-token layer, so this is the first line of defence.
+# Without it, any web page open in the same browser could POST a
+# multipart/form-data upload (a CORS "simple" request, sent without a
+# preflight) to the local admin panel and replace a resume. Browsers always
+# send Origin on cross-site POST/PUT/PATCH/DELETE; requests that carry
+# neither Origin nor Referer come from non-browser clients (curl, scripts),
+# which can't be driven cross-site, so they are allowed.
+
+MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+DEFAULT_ADMIN_ORIGINS = ("http://localhost:5175", "http://127.0.0.1:5175", "http://[::1]:5175")
+
+
+def _normalize_origin(value):
+    """'scheme://host[:port]' lowercased, or None if it isn't a usable origin."""
+    parts = urlsplit((value or "").strip())
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def allowed_origins(env=None):
+    """Default loopback origins plus ADMIN_ALLOWED_ORIGINS (comma-separated)."""
+    env = os.environ if env is None else env
+    extra = {_normalize_origin(o) for o in env.get("ADMIN_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+    return set(DEFAULT_ADMIN_ORIGINS) | {o for o in extra if o}
+
+
+@app.before_request
+def _check_origin():
+    if request.method not in MUTATING_METHODS:
+        return None
+    origin = request.headers.get("Origin")
+    if origin is None:
+        referer = request.headers.get("Referer")
+        if referer is None:
+            return None  # not a browser
+        origin = referer
+    if _normalize_origin(origin) not in allowed_origins():
+        return jsonify({
+            "error": "Cross-origin request blocked",
+            "detail": "This admin panel only accepts changes from its own page. "
+                      "Behind a proxy, add its origin to ADMIN_ALLOWED_ORIGINS.",
+        }), 403
+    return None
+
+
+# ── CSRF tokens (WM-JH-UPLOAD-CSRF-01): second layer after the Origin check ──
+# GET /api/csrf-token issues a random token; every POST/PUT/PATCH/DELETE must
+# present one in the X-CSRF-Token header (or a `csrf_token` form field).
+# Tokens are single-use and expire, so a captured token can't be replayed.
+# A cross-origin page can trigger the GET but can't read its response (no CORS
+# headers), so it never learns a token.
+
+CSRF_TTL_SECONDS = 600
+CSRF_MAX_OUTSTANDING = 1000
+_csrf_tokens = {}            # token -> expiry (monotonic seconds)
+_csrf_lock = threading.Lock()
+_csrf_clock = time.monotonic
+
+
+def issue_csrf_token():
+    now = _csrf_clock()
+    token = secrets.token_urlsafe(32)
+    with _csrf_lock:
+        for t in [t for t, exp in _csrf_tokens.items() if exp <= now]:
+            del _csrf_tokens[t]
+        while len(_csrf_tokens) >= CSRF_MAX_OUTSTANDING:      # drop the oldest
+            del _csrf_tokens[min(_csrf_tokens, key=_csrf_tokens.get)]
+        _csrf_tokens[token] = now + CSRF_TTL_SECONDS
+    return token
+
+
+def consume_csrf_token(token):
+    """True once for a valid, unexpired token; the token is spent either way."""
+    if not token:
+        return False
+    with _csrf_lock:
+        expiry = _csrf_tokens.pop(token, None)
+    return expiry is not None and _csrf_clock() < expiry
+
+
+@app.route("/api/csrf-token")
+def get_csrf_token():
+    return jsonify({"token": issue_csrf_token(), "expires_in": CSRF_TTL_SECONDS})
+
+
+@app.before_request
+def _check_csrf_token():
+    if request.method not in MUTATING_METHODS:
+        return None
+    token = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+    if not consume_csrf_token(token):
+        return jsonify({
+            "error": "Missing or invalid CSRF token",
+            "detail": "Fetch a fresh token from GET /api/csrf-token and send it as X-CSRF-Token; each token works once.",
+        }), 403
+    return None
+
+
+@app.before_request
+def _validate_path_segments():
+    args = request.view_args or {}
+    for key in ("profile", "name"):
+        if key in args and not PROFILE_NAME_RE.fullmatch(str(args[key])):
+            return jsonify({"error": f"Invalid {key}"}), 400
+        if key in args and request.method != "GET" and args[key] in RESERVED_PROFILES:
+            return jsonify({"error": f"'{args[key]}' is reserved and can't be changed"}), 403
+    filename = args.get("filename")
+    if filename is not None and request.endpoint != "serve_static":
+        if filename.startswith(".") or "/" in filename or "\\" in filename:
+            return jsonify({"error": "Not found"}), 404
 
 
 # ── Static files (UI) ───────────────────────────────────
@@ -199,7 +391,7 @@ def update_search_settings(name):
             val_str = "True" if value else "False"
             pattern = rf'("{key}"\s*:\s*)(True|False)'
         elif key in SETTINGS_INT_KEYS:
-            val_str = str(int(value) if value else 0)
+            val_str = str(_as_int(value, key))
             pattern = rf'("{key}"\s*:\s*)\d+'
         else:
             continue  # unknown key — ignore
@@ -215,7 +407,7 @@ def update_search_settings(name):
             )
         content = new_content
 
-    profile_file.write_text(content)
+    atomic_write_text(profile_file, content)
     return jsonify({"ok": True})
 
 
@@ -233,9 +425,8 @@ def get_jobs(profile):
 
     rows = _read_csv(filepath)
 
-    # Add index to each row
-    for i, row in enumerate(rows):
-        row["_index"] = i
+    # Add position, stable id and revision to each row
+    rows = [_with_identity(row, i) for i, row in enumerate(rows)]
 
     # Apply filters
     work_type = request.args.get("work_type")
@@ -275,17 +466,39 @@ def update_job(profile, index):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    rows = _read_csv(filepath)
-    if index < 0 or index >= len(rows):
-        return jsonify({"error": "Invalid index"}), 400
+    updates = request.json or {}
+    job_id, rev = updates.get("_id"), updates.get("_rev")
+    result = {}
 
-    updates = request.json
-    for key, value in updates.items():
-        if key in columns:
-            rows[index][key] = value
+    def mutate(rows):
+        idx = index
+        if job_id:  # stable identity wins over the (possibly stale) position
+            idx = _locate(rows, job_id)
+            if idx is None:
+                result["error"] = (404, {"error": "Job not found — it may have been removed by a scrape or cleanup"})
+                return None
+            if idx == -1:
+                result["error"] = (409, {"error": "ambiguous", "detail": "More than one row has this job id"})
+                return None
+        elif idx < 0 or idx >= len(rows):
+            result["error"] = (400, {"error": "Invalid index"})
+            return None
+        if rev and rev != _job_rev(rows[idx]):
+            result["error"] = (409, {"error": "conflict",
+                                     "detail": "This job changed after you loaded it",
+                                     "current": _with_identity(rows[idx], idx)})
+            return None
+        for key, value in updates.items():
+            if key in columns:
+                rows[idx][key] = value
+        result["row"] = _with_identity(rows[idx], idx)
+        return rows
 
-    _write_csv(filepath, rows, columns)
-    return jsonify({"ok": True, "row": rows[index]})
+    locked_update_csv(filepath, columns, mutate)  # whole read-modify-write under one lock (JH-010)
+    if "error" in result:
+        status, body = result["error"]
+        return jsonify(body), status
+    return jsonify({"ok": True, "row": result["row"]})
 
 
 @app.route("/api/jobs/<profile>/bulk", methods=["PATCH"])
@@ -298,21 +511,43 @@ def bulk_update_jobs(profile):
         filepath = _profile_dir(profile) / "jobs.csv"
         columns = SHEET_COLUMNS
 
-    rows = _read_csv(filepath)
-    body = request.json
+    body = request.json or {}
     indices = body.get("indices", [])
+    items = body.get("items")  # optional [{"_id", "_rev"}]: all-or-nothing with conflict check
     updates = body.get("updates", {})
+    counter = {"n": 0}
+    result = {}
 
-    count = 0
-    for idx in indices:
-        if 0 <= idx < len(rows):
+    def mutate(rows):
+        targets = []
+        if items:
+            conflicts, missing = [], []
+            for it in items:
+                idx = _locate(rows, it.get("_id", ""))
+                if idx is None or idx == -1:
+                    missing.append(it.get("_id"))
+                elif it.get("_rev") and it["_rev"] != _job_rev(rows[idx]):
+                    conflicts.append(_with_identity(rows[idx], idx))
+                else:
+                    targets.append(idx)
+            if conflicts or missing:
+                result["error"] = (409, {"error": "conflict", "conflicts": conflicts, "missing": missing,
+                                         "detail": "Nothing was changed; reload and try again"})
+                return None
+        else:
+            targets = [i for i in indices if 0 <= i < len(rows)]
+        for idx in targets:
             for key, value in updates.items():
                 if key in columns:
                     rows[idx][key] = value
-            count += 1
+            counter["n"] += 1
+        return rows
 
-    _write_csv(filepath, rows, columns)
-    return jsonify({"ok": True, "updated": count})
+    locked_update_csv(filepath, columns, mutate)  # JH-010
+    if "error" in result:
+        status, payload = result["error"]
+        return jsonify(payload), status
+    return jsonify({"ok": True, "updated": counter["n"]})
 
 
 @app.route("/api/jobs/<profile>/stats")
@@ -322,8 +557,10 @@ def job_stats(profile):
 
     def _stats(rows):
         total = len(rows)
-        approved = sum(1 for r in rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        applied = sum(1 for r in rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
+        kinds = [classify_apply(r.get("Apply")) for r in rows]
+        approved = kinds.count("approved")
+        auto_applied, user_applied = kinds.count("auto_applied"), kinds.count("user_applied")
+        applied = auto_applied + user_applied
         remote = sum(1 for r in rows if r.get("Work Type", "") == "Remote")
         categories = {}
         sources = {}
@@ -334,6 +571,7 @@ def job_stats(profile):
             sources[src] = sources.get(src, 0) + 1
         return {
             "total": total, "approved": approved, "applied": applied,
+            "auto_applied": auto_applied, "user_applied": user_applied,
             "remote": remote, "categories": categories, "sources": sources,
         }
 
@@ -440,10 +678,14 @@ def get_form_config(profile):
 
 @app.route("/api/form-config/<profile>", methods=["PUT"])
 def update_form_config(profile):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or any(
+            not isinstance(body.get(k, []), list) for k in ("custom_fields", "select_defaults")):
+        return jsonify({"error": "Expected an object with custom_fields / select_defaults lists"}), 400
     config_path = _profile_dir(profile) / "form_config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        json.dump(request.json, f, indent=2)
+    with file_lock(config_path):
+        atomic_write_json(config_path, body)
     return jsonify({"ok": True})
 
 
@@ -482,7 +724,7 @@ def list_resumes(profile):
 @app.route("/api/resumes/<profile>/<filename>")
 def serve_resume(profile, filename):
     resume_path = _profile_dir(profile) / "resumes" / filename
-    if not resume_path.exists():
+    if not resume_path.is_file():
         return jsonify({"error": "Not found"}), 404
     return send_file(resume_path, mimetype="application/pdf")
 
@@ -516,8 +758,7 @@ def get_ai_training(profile):
     rows = _read_csv(_profile_dir(profile) / "jobs.csv")
     ai_jobs = [r for r in rows if (r.get("Role Category") or "") == role_label]
     ai_approved = sum(1 for r in ai_jobs
-                      if (r.get("Apply", "") or "").strip().upper() in ("Y",)
-                      or (r.get("Apply", "") or "").strip().upper().startswith("DONE"))
+                      if classify_apply(r.get("Apply")) in ("approved", "auto_applied", "user_applied"))
 
     tracker = load_tracker(profile)
     save_tracker(profile, tracker)  # persist seeding of any new platforms
@@ -737,8 +978,7 @@ LOCATION_FILTER = {{
 }}
 '''
 
-    with open(profile_file, "w") as f:
-        f.write(content)
+    atomic_write_text(profile_file, content)
 
     # Create output directories
     out = OUTPUT_DIR / name
@@ -817,8 +1057,8 @@ def add_role(name):
         return jsonify({"error": "role_id must be 2+ lowercase letters/numbers/dashes"}), 400
 
     label = body.get("label", role_id)
-    salary_min = int(body.get("salary_min", 0))
-    salary_max = int(body.get("salary_max", 0))
+    salary_min = _as_int(body.get("salary_min", 0), "salary_min")
+    salary_max = _as_int(body.get("salary_max", 0), "salary_max")
     resume_file = body.get("resume_file", "")
     search_queries = body.get("search_queries", [])
 
@@ -857,9 +1097,9 @@ def update_role(name, role_id):
     if "label" in body:
         roles[role_id]["label"] = body["label"]
     if "salary_min" in body:
-        roles[role_id]["salary_min"] = int(body["salary_min"])
+        roles[role_id]["salary_min"] = _as_int(body["salary_min"], "salary_min")
     if "salary_max" in body:
-        roles[role_id]["salary_max"] = int(body["salary_max"])
+        roles[role_id]["salary_max"] = _as_int(body["salary_max"], "salary_max")
     if "resume_file" in body:
         roles[role_id]["resume_file"] = body["resume_file"]
     if "search_queries" in body:
@@ -937,8 +1177,7 @@ def _write_role_profiles(name, roles):
         # No existing block — append
         result = src_lines + ["\n"] + new_lines
 
-    with open(profile_file, "w") as f:
-        f.writelines(result)
+    atomic_write_text(profile_file, "".join(result))
 
 
 # ── Resume upload ────────────────────────────────────
@@ -999,10 +1238,10 @@ def all_users_summary():
             user_name = up.get("name", p)
             user_email = up.get("email", "")
 
-        approved = sum(1 for r in api_rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        applied = sum(1 for r in api_rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
-        b_approved = sum(1 for r in browser_rows if (r.get("Apply", "") or "").strip().upper() == "Y")
-        b_applied = sum(1 for r in browser_rows if (r.get("Apply", "") or "").strip().upper() == "DONE")
+        approved = sum(1 for r in api_rows if classify_apply(r.get("Apply")) == "approved")
+        applied = sum(1 for r in api_rows if is_applied(r.get("Apply")))
+        b_approved = sum(1 for r in browser_rows if classify_apply(r.get("Apply")) == "approved")
+        b_applied = sum(1 for r in browser_rows if is_applied(r.get("Apply")))
 
         users.append({
             "profile": p,
@@ -1021,10 +1260,24 @@ def all_users_summary():
 
 # ── Main ────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def debug_enabled(argv=None, env=None) -> bool:
+    """Debug only on explicit request (JH-011); never by default."""
+    argv = sys.argv if argv is None else argv
+    env = os.environ if env is None else env
+    return "--debug" in argv or env.get("ADMIN_DEBUG", "") == "1"
+
+
+def main(argv=None, env=None, run=None):
+    debug = debug_enabled(argv, env)
     mode = "DEPLOYED" if DEPLOYED_MODE else "LOCAL"
     print(f"\n  Admin Panel starting... ({mode} mode)")
     print(f"  Project root: {PROJECT_ROOT}")
     print(f"  Profiles: {', '.join(_list_profiles())}")
+    if debug:
+        print("  ⚠️  Flask debugger ON — local development only; never expose this port.")
     print(f"\n  Open http://localhost:5175\n")
-    app.run(host="127.0.0.1", port=5175, debug=True)
+    (run or app.run)(host="127.0.0.1", port=5175, debug=debug)
+
+
+if __name__ == "__main__":
+    main()

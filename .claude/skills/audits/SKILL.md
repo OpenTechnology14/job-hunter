@@ -50,7 +50,7 @@ non-submission.
 branch protection on `main` (decision JH-D05), no CODEOWNERS and no labels
 convention. Report CI's actual result for the PR. An admin merge needs the
 owner's explicit instruction for that PR; record which checks were skipped.
-Merge with the noreply author email, never a personal address (`docs/GAP_AUDIT.md` JH-D06).
+Merge with the noreply author email, never a personal address (`docs/GAP_AUDIT.md` JH-D06). A PR containing commits from before 2026-11-07 must be **squash-merged**, never rebased or merge-committed (JH-D08).
 
 Minimum triage per PR:
 

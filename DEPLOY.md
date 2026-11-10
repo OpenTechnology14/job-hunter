@@ -288,6 +288,8 @@ server {
 EOF
 ```
 
+> **Allowed origins (required behind a proxy).** The admin panel rejects every POST/PUT/PATCH/DELETE whose `Origin` isn't its own (default: `http://localhost:5175`, `http://127.0.0.1:5175`, `http://[::1]:5175`). When you serve it at another address, add that address, for example `ADMIN_ALLOWED_ORIGINS=https://jobs.example.com` (comma-separated, scheme and host, plus port if non-default), or saving from the UI returns 403.
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/job-hunter /etc/nginx/sites-enabled/
 sudo nginx -t                    # Test config

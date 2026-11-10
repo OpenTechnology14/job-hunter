@@ -77,7 +77,7 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 4.3 | Form fill | Watch browser during apply | Name, email, phone, city filled from profile |
 | 4.4 | Custom fields | Add pattern to form_config.json, apply to matching job | Custom field auto-filled |
 | 4.5 | Pause before submit | Run without --dry-run | Browser pauses and asks for confirmation before submit |
-| 4.6 | Mark done | After successful apply | Apply column changes to "Done" with date |
+| 4.6 | Mark applied | After a successful apply | Easy Apply (Job Hunter clicked) → "Auto Applied"; form you submitted yourself and answered "y" → "User Applied"; with date |
 
 ---
 
@@ -170,7 +170,10 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 10.3 | Min budget | `filter_min_budget: 25`, freelance scrape | Freelancer projects under $25 dropped |
 | 10.4 | Aggregators | Web search on | "1,000+ … jobs" listing pages dropped |
 | 10.5 | Cross-source dedupe | Same posting on two boards | Only one row kept (title+company key) |
-| 10.6 | Retro-clean | `python quality_filter.py --profile <p> --clean --dry-run` | Lists removable rows; approved (Y/Done) rows untouched |
+| 10.6 | Retro-clean | `python quality_filter.py --profile <p> --clean --dry-run` | Lists removable rows; approved (Y / Auto Applied / User Applied) rows untouched |
+| 10.7 | Atomic write fault (JH-010) | `python run_tests.py --storage` | Simulated crash before `os.replace`: original intact, no temp residue |
+| 10.8 | Concurrent writers (JH-010) | `--storage` | 8 threads × 25 locked updates on different rows: no lost update |
+| 10.9 | Columns and mode kept (JH-010) | `--storage` | A column you added in Excel and the file's permissions survive a rewrite; corrupt JSON fails visibly |
 
 ---
 
@@ -219,3 +222,40 @@ Groups (the runner prints the live count; it isn't hardcoded here, because it dr
 | 14.1 | Dry-run Easy Apply reaches Submit | Fake flow: Continue → Review → Submit, `dry_run=True` | Submit never clicked; returns `False` (GAP-JH-04) |
 | 14.2 | Dry-run form apply | Fake page with a visible Submit, `dry_run=True` | No clicks at all; returns `False` |
 | 14.3 | Live submit confirmation | `s` at SUBMIT prompt, then Enter on a fresh flow | Skip → no click; confirm → exactly one Submit click |
+| 14.4 | Guard in dry-run | `SubmissionGuard(dry_run=True)` | Never prompts, never mints a token, never clicks (JH-003) |
+| 14.5 | Single-use, scoped token | Replay a token; use it for another job; change the page fingerprint | Each refused; exactly one click overall (GAP-JH-05) |
+| 14.6 | Expiry and invalidation | Advance the clock past the TTL; invalidate (navigation); issue a newer confirmation | Old tokens refused; any refused attempt voids the live token (fail-closed) |
+| 14.7 | Page change after confirm | The page URL changes between the SUBMIT answer and the click | Not submitted; no Submit click |
+
+---
+
+## 15. Admin Route Contracts (automated, offline)
+
+`python run_tests.py --routes` (also part of the default run). `tests/admin_routes.py` copies the code into a temporary project tree with a synthetic profile and fixtures, then drives the Flask test client, so the real `profiles/` and `output/` are never touched.
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 15.1 | Every route (34): 19 GET, 15 mutating | Success shape, 404 for unknown profiles where the route has one, filters work |
+| 15.2 | Profile segment `%2E%2E` on profile-scoped routes | 400; nothing from outside `output/` is returned |
+| 15.3 | Resume filename `..` | 404, not a 500 |
+| 15.4 | Ledger check | The server's routes equal `docs/API_ROUTE_AUDIT_LEDGER.md`; each is covered or listed as phase-2 pending |
+| 15.5 | Edit after a scrape reorders the CSV | PATCH with `_id` lands on the same job, not the row now at that index |
+| 15.6 | Stale `_rev` / unknown `_id` / duplicate rows | 409 with the current row (nothing written) / 404 / 409 ambiguous |
+| 15.7 | Bulk PATCH with `items`, one stale | 409, nothing changed; all fresh: every row updated |
+| 15.8 | Scrape POST (stubbed) | Starts `run_scrape.py --profile <p>` with the project's venv path and logs the run; 409 if running; a cross-site text/plain POST gets 415 and spawns nothing |
+| 15.9 | Profile/role/resume writes | Create (sanitized name, 409 duplicate, 400 bad name), role add/update/delete, upload (sanitized PDF name, non-PDF 400), deletes keep output data |
+| 15.10 | Bad input | Non-numeric settings or salaries → 400; malformed form config → 400; writes to `__init__`/`example_profile` → 403 |
+| 15.11 | Cross-origin write | Upload/PATCH/DELETE with `Origin: https://evil.example`, a cross-site Referer, `Origin: null` or another localhost port → 403 and nothing written; same-origin and no-Origin clients pass; `ADMIN_ALLOWED_ORIGINS` extends the list |
+| 15.12 | CSRF token | Same-origin write without a token, with a forged token, a replayed token or an expired token → 403 and nothing written; a valid token works once; a valid token from the wrong Origin is still 403 |
+
+## 16. Auto Applied vs User Applied (automated, offline)
+
+`python run_tests.py --safety --storage`.
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 16.1 | Easy Apply, Job Hunter's guarded click | `auto_applied` / "Auto Applied" |
+| 16.2 | Form prefilled, you answer y | `user_applied` / "User Applied"; Job Hunter clicks nothing |
+| 16.3 | Form prefilled, Enter / no; skip; dry-run | Not marked |
+| 16.4 | Migration `apply_status.py --migrate` | Every row kept in order; Done → Auto Applied; non-Easy-Apply Done rows tagged needs-review; idempotent; `--dry-run` writes nothing |
+| 16.5 | Stale cleanup | Auto Applied, User Applied, legacy Done and Y are never removed |

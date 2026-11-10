@@ -4,6 +4,8 @@
 
 At task/session start, read [the coordination guide](docs/AGENT_STEERING_AND_STANDUPS.md) and [accepted workflow reference](.agent-workflows.json). Check source/CI drift before using the library. Existing project privacy, application supervision and release rules remain authoritative. The facilitator helps refine ideas from a sentence or short list, finishes with a short conclusion, then fills canonical intake and generates the next prompt.
 
+Keep existing tasks, decisions and PR evidence authoritative. Owner policy (2026-10-25): documentation/prompt-only changes need relevant local documentation checks, not an automatic full CI run; code/runtime changes retain applicable project verification. Honor an explicit owner force-merge instruction for the named PR and record outstanding checks honestly. This policy is the scoped exception to blanket CI/build wording elsewhere; it does not grant a blanket bypass for future work.
+
 Read this file before modifying the repository.
 
 ## Project identity
@@ -13,6 +15,8 @@ Job-Hunter is a local-first, two-phase job-search tool: it collects/matches oppo
 ## Repository history
 
 This repository was re-created on 2026-10-27 with a single fresh commit, after personal data was found in the old repository's pull-request history. The old repository is private and archived at `OpenTechnology14/job-hunter-archive`. PR and commit numbers cited in the docs (for example "PR #5") refer to that archive. Anyone with a clone from before 2026-10-27 must re-clone; the histories are unrelated. Commit as `OpenTechnology14 <263201565+OpenTechnology14@users.noreply.github.com>`; never use a personal email address in this public repository.
+
+**Merge rule (JH-D08, 2026-11-08):** a PR that contains any commit created before 2026-11-07, when GitHub email privacy was turned on, must be **squash-merged**, never rebased or merged with a merge commit. Squashing writes one new commit authored by the merger (now the noreply address), so older commit metadata never reaches `main`. Check with `git log origin/main..<branch> --format='%ae %ce %ad'`; when in doubt, squash.
 
 ## Non-negotiable boundaries
 

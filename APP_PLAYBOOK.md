@@ -43,7 +43,7 @@ Job Hunter is a local-first job hunting automation tool. It scrapes free job boa
 7. Auto-apply reads Y jobs, opens Playwright browser (browser_apply.py)
 8. resume_picker.py selects correct PDF per role category
 9. Browser fills forms, uploads resume, pauses before submit
-10. On confirm: submits, marks "Done" in CSV
+10. On confirm: Job Hunter clicks Submit and marks "Auto Applied"; on generic forms you submit yourself and it marks "User Applied" (JH-D07)
 ```
 
 ---
@@ -92,7 +92,7 @@ Checks `STORAGE_MODE` and delegates to `local_sync` or `sheets_sync`.
 - Deduplication by URL (existing jobs not overwritten)
 - New jobs appended to bottom
 - Column order defined by `SHEET_COLUMNS`
-- `cleanup_stale_jobs()` — removes unapproved jobs older than `stale_days` (never touches Y/Done)
+- `cleanup_stale_jobs()` — removes unapproved jobs older than `stale_days` (never touches Y, Auto Applied, User Applied or legacy Done)
 
 ### sheets_sync.py — Google Sheets Backend
 - Uses `gspread` with service account

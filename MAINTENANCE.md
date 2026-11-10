@@ -125,12 +125,13 @@ with `python quality_filter.py --profile <p> --clean [--dry-run]` — approved
 ## 3. Storage Layer (`storage.py`, `local_sync.py`, `sheets_sync.py`)
 
 ### Local CSV mode (default)
+- **All writes are atomic and locked (JH-010):** use `atomic_io` (`atomic_write_csv/json/text`, `locked_update_csv/json`, `file_lock`), never a bare `open(path, "w")`. The lock file is `<file>.lock`, shared by the scraper, the apply flow and the admin panel
 - `local_sync.py` reads/writes CSV files using Python's `csv` module
 - Deduplication by URL: existing jobs are not overwritten
 - New jobs are appended to the bottom
 - Column order defined by `SHEET_COLUMNS` constant
 - `cleanup_stale_jobs()` removes unapproved jobs older than `stale_days` (default 30, 0 = disabled)
-  - Never removes jobs with Apply = "Y" or "Done"
+  - Never removes jobs with Apply = "Y", "Auto Applied", "User Applied" or legacy "Done" (`apply_status.is_protected`)
   - Never removes jobs with no Date Found
   - Called automatically before each scrape (skip with `--no-cleanup`)
 
@@ -156,8 +157,8 @@ Set `STORAGE_MODE` in the profile file. Both modes can coexist - they write to d
    - Fills standard fields from `USER_PROFILE`
    - Applies custom fields from `form_config.json`
    - Uploads resume PDF via `resume_picker.py`
-   - **Pauses for user confirmation**
-   - On confirm: submits, marks "Done" in CSV
+   - **Pauses for user confirmation**: the Submit click goes only through `submission_guard.SubmissionGuard`, as a single-use token bound to this job and page, expiring after 120 s (JH-003)
+   - On confirm: guarded click → "Auto Applied"; on generic forms you click Submit and answer "y" → "User Applied" (`apply_status.py`, JH-D07)
 4. `--dry-run` flag: does everything except submit
 
 ### Form detection
@@ -227,6 +228,8 @@ Profile files are executed as Python code. Never load untrusted profile files. I
 - Scrape buttons spawn `run_scrape.py` as subprocess in background thread
 - No database - filesystem is the database
 - No authentication - localhost only
+- **Cross-origin writes blocked:** every POST/PUT/PATCH/DELETE needs an allowed `Origin` (or `Referer`); requests with neither (curl, scripts) pass. Allow-list: loopback on port 5175 plus `ADMIN_ALLOWED_ORIGINS`. New write routes are covered automatically by the test that sweeps the URL map
+- **CSRF tokens:** every write also needs `X-CSRF-Token` (or a `csrf_token` form field) holding a token from `GET /api/csrf-token`. Tokens are single-use and expire after 10 minutes. The UI's `csrfFetch()` fetches one per write; scripts calling the API must do the same
 
 ### Two modes
 - **Local** (default): Profile dropdown, single-user view
@@ -244,7 +247,7 @@ Partial list (20 of 33). The canonical inventory is [`docs/API_ROUTE_AUDIT_LEDGE
 | POST | `/api/profiles` | Create new profile from template |
 | DELETE | `/api/profiles/<name>` | Delete profile file (keeps output data) |
 | GET | `/api/jobs/<profile>?source=api\|browser` | List jobs with filters |
-| PATCH | `/api/jobs/<profile>/<index>` | Update single job field |
+| PATCH | `/api/jobs/<profile>/<index>` | Update single job field. Send `_id` + `_rev` from the listing: 409 if the job changed, 404 if it's gone |
 | PATCH | `/api/jobs/<profile>/bulk` | Bulk update jobs |
 | GET | `/api/jobs/<profile>/stats` | Job statistics by category/source |
 | POST | `/api/scrape/<profile>` | Start scrape (api/browser/both) |

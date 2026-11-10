@@ -75,7 +75,7 @@ Auto-Apply (browser_apply.py + ats_fields.py catalog)
     | fills forms (no personal data in screener questions),
     | uploads the right resume, pauses before every submission
     v
-Job marked "Done" in spreadsheet
+Job marked "Auto Applied" (Job Hunter clicked Submit) or "User Applied" (you did)
 ```
 
 ```
@@ -194,6 +194,9 @@ python run_apply.py --profile yourname              # Real apply (pauses before 
 python admin/server.py
 # Open http://localhost:5175
 
+# Flask debugger + auto-reload for local development only (off by default)
+python admin/server.py --debug
+
 # Multi-user deployed mode
 python admin/server.py --deployed
 # or: DEPLOYED=1 python admin/server.py
@@ -264,6 +267,7 @@ All optional. Set in `.env` file (gitignored).
 | `ADZUNA_APP_ID` | Adzuna API (free tier available) |
 | `ADZUNA_APP_KEY` | Adzuna API key |
 | `GOOGLE_SHEET_ID` | Google Sheets mode — target sheet ID |
+| `ADMIN_ALLOWED_ORIGINS` | Extra origins allowed to make changes in the admin panel (comma-separated), e.g. a proxy domain. Loopback on port 5175 is always allowed |
 | `DEPLOYED` | Set to `1` for multi-user admin panel mode |
 
 ---

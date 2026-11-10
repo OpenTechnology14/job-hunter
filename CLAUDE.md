@@ -4,6 +4,8 @@
 
 At task/session start, read [the coordination guide](docs/AGENT_STEERING_AND_STANDUPS.md) and [accepted workflow reference](.agent-workflows.json). Check source/CI drift before using the library. Existing project privacy, application supervision and release rules remain authoritative. The facilitator helps refine ideas from a sentence or short list, finishes with a short conclusion, then fills canonical intake and generates the next prompt.
 
+Keep existing tasks, decisions and PR evidence authoritative. Owner policy (2026-10-25): documentation/prompt-only changes need relevant local documentation checks, not an automatic full CI run; code/runtime changes retain applicable project verification. Honor an explicit owner force-merge instruction for the named PR and record outstanding checks honestly. This policy is the scoped exception to blanket CI/build wording elsewhere; it does not grant a blanket bypass for future work.
+
 ## Project Overview
 
 A two-phase local job hunting automation system. No cloud hosting, no AI API
@@ -286,7 +288,7 @@ The browser opens visibly. For each job marked "Y" it:
 4. Fills fields and attaches the resume
 5. Pauses for you to review before submitting
 
-After applying, the Apply column updates to "Done" with today's date.
+After applying, the Apply column shows "Auto Applied" (Job Hunter clicked Submit) or "User Applied" (you clicked Submit after Job Hunter filled the form), with today's date. Older "Done" rows read as Auto Applied; `python apply_status.py --profile <name> --migrate` rewrites them (JH-D07).
 
 ### Schedule automatic scraping (optional):
 ```bash
@@ -325,7 +327,7 @@ Toggles live in Admin Panel → Config → Result Quality Filters
 (`filter_title_relevance`, `filter_usd_only`, `filter_min_budget`,
 `filter_aggregators` in SEARCH_SETTINGS). Retro-clean an existing sheet:
 `python quality_filter.py --profile Example --clean [--dry-run]` (never touches
-rows marked Y/Done).
+rows marked Y, Auto Applied or User Applied).
 
 ---
 

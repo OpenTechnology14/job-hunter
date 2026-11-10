@@ -25,7 +25,7 @@
 
 ## `DEPLOY.md`
 
-- Label the Flask debug server as development-only.
+- Label the Flask development server as development-only. (*2026-11-04:* the debugger is now opt-in via `--debug`; the dev-server label is still to do.)
 - Do not present external basic auth as sufficient for multi-user isolation.
 - Add a hosted readiness gate that links to `docs/OPEN_SOURCE_RELEASE_CHECKLIST.md`.
 
