@@ -20,3 +20,8 @@ Closes #
 
 ## Notes for reviewers
 Anything to watch for, or manual steps to test.
+
+## Logs
+
+<!-- Close the PR body with one line naming the project logs this PR touched (CHANGELOG.md, docs/TECHNICAL_NOTES.md, docs/BUGS.md, docs/POTENTIAL_GAPS.md) with their entry IDs, or `Logs: none.` -->
+Logs: <the project logs this PR touched, with entry IDs, or "none.">
