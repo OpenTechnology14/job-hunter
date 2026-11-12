@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Status | Accepted and implemented 2026-11-09 (WM-JH-D07-IMPL-01) |
-| Date | 2026-11-09 (supersedes the 2026-11-08 "Reviewed vs Done" draft) |
+| Date | 2026-11-09 (supersedes the 2026-11-08 "Reviewed vs Done" draft, now a [deprecation stub](2026-11-08-reviewed-vs-done.md)) |
 | Author | Agent (T3 rows WM-JH-D07-TERM-FIX-01, WM-JH-D07-IMPL-01) |
 | Relates to | `docs/GAP_AUDIT.md` JH-D07; `PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md` §7.1 (GAP-JH-06) |
 | Hub tokens or components touched | none (local only) |
