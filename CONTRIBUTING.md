@@ -184,7 +184,7 @@ The `pattern` is matched case-insensitively against form field labels during aut
 
 ## Merging
 
-**Merge rule (JH-D08, 2026-11-08):** a PR that contains any commit created before 2026-11-07, when GitHub email privacy was turned on, must be **squash-merged**, never rebased or merged with a merge commit. Squashing writes one new commit authored by the merger (now the noreply address), so older commit metadata never reaches `main`. Check with `git log origin/main..<branch> --format='%ae %ce %ad'`; when in doubt, squash. Otherwise, follow `docs/AGENT_STEERING_AND_STANDUPS.md` → Validation and owner merge instructions.
+**Merge rule (JH-D08, 2026-11-08):** a PR that contains any commit created before 2026-11-07, when GitHub email privacy was turned on, must be **squash-merged**, never rebased or merged with a merge commit. Squashing writes one new commit authored by the merger (now the noreply address), so older commit metadata never reaches `main`. Check with `git log origin/main..<branch> --format='%ae %ce %ad'`; when in doubt, squash. Otherwise, follow `docs/AGENT_STEERING_AND_STANDUPS.md` → Project merge rule and the owner policy in `AGENTS.md`.
 
 ## Running Tests
 

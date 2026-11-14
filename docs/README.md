@@ -50,4 +50,7 @@ Job-Hunter is a local-first, supervised job-search tool. This index separates us
 
 Status terms: **Verified** is directly observed or executed; **Inferred** follows from code but was not executed; **Proposed** does not exist; **Blocked** names unavailable verification.
 
-- [Agent steering and standups](AGENT_STEERING_AND_STANDUPS.md) — installed T3 coordination workflow, paired owner questions, hourly closes and scoped validation.
+## Agent workflow integration
+
+- [Coordination and short idea intake](AGENT_STEERING_AND_STANDUPS.md)
+- [Direct workflow-reference proposal](proposals/PROPOSAL_AGENT_WORKFLOW_REFERENCE.md)
