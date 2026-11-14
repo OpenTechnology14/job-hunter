@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: OpenTechnology14/AgentWorkflows
-          ref: 9495bfb6a62ddda692150b69b6f20da605cdf238
+          ref: a2c1f3b6be2aa561717511e737a1b0ded1108684
           path: .agent-workflows-library
           persist-credentials: false
       - run: python3 .agent-workflows-library/scripts/project_reference.py check --project . --library .agent-workflows-library --upstream
