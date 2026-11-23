@@ -30,9 +30,11 @@ not executed. **Proposed** = doesn't exist yet. **Blocked** = verification
 unavailable (say why). Record executed evidence separately from inferred or
 proposed behavior. Never describe a proposed gate (pytest default, CI) as live.
 
-## Decisions: always include a Question line
+## Decisions: two tiers in the owning document
 
-Every open decision gets a stable ID (`JH-D0N`, or a proposal-scoped prefix such as `JHD-REDESIGN-D0N`) and ends with a one-sentence plain-English **Question:** with two or three choices and a marked recommendation plus its tradeoff. The full explanation stays beside it. Record answers under the same ID. Repo-wide open decisions live in `docs/GAP_AUDIT.md` → Open decisions; proposal-scoped ones live in that proposal. Never mark a decision answered on silence.
+Every open decision keeps its stable ID (`JH-D0N`, or a proposal-scoped prefix such as `JHD-REDESIGN-D0N`). Its simple cell or standalone line contains only `**Question:** <one plain sentence?> **Suggested:** <one to three words>`. The question starts with a capital, has one question mark and at most 25 words, and needs no project jargon, identifier, path or link to understand. Move choices and explanations into the same document's `Reasoning for <ID>` section. Follow the [public decision policy](https://github.com/OpenTechnology14/AgentWorkflows/blob/3d815cbd043e05c8df4579206d6a2d61182cbb48/workflows/DECISIONS.md) and [full template](https://github.com/OpenTechnology14/AgentWorkflows/blob/3d815cbd043e05c8df4579206d6a2d61182cbb48/templates/DECISION_GATE.md) directly for ordered parts, eight fields per option, comparison axes, downstream impact, deferral and recovery. This task-specific policy reference does not migrate the workflow adapter.
+
+Preserve every source option, label, recommendation and answer. Mark an author suggestion explicitly when the table has no recommendation column, or preserve the source recommendation in a Default column. Unknown figures need the exact evidence that would settle them. Classify strategic choices against the entire public proposal landscape; technical choices explain how to deliver approved scope. Named technical gates stay owner-reserved unless explicitly released. If source answer keys conflict, retain both mappings and require clarification of ambiguous letter-only answers. Never treat formatting, classification or silence as approval. Repo-wide decisions stay in `docs/GAP_AUDIT.md`; proposal-scoped ones stay in their proposal. Historical resolved rows retain their wording.
 
 ## Proposal queue
 

@@ -77,7 +77,7 @@ Choose before hosted work begins:
 
 Until the decision is complete, `--deployed` must refuse to start with a message linking to this proposal. An `unsafe` override is not part of the supported release.
 
-**Question:** Should Job Hunter drop its multi-user "deployed" mode and stay a local, single-user tool? **A. Yes, drop it (recommended):** fastest safe release; no hosted option. **B. No, keep it:** the full Hosted Track in §11 must be built first. *(Recorded in `docs/GAP_AUDIT.md` → Open decisions.)*
+**Question:** Should this tool drop shared online use and stay on one trusted person’s computer? **Suggested:** Local only
 
 ## 5. Target repository structure
 
@@ -379,3 +379,47 @@ Rollback disables OpenTech, restores the prior local adapter behind a short-live
 ### 2026-11-09 — JH-WP2 step 3: typed apply outcomes (§7.1, GAP-JH-06)
 
 **Verified:** `apply_status.py` defines `ApplyStatus.AUTO_APPLIED` / `USER_APPLIED` (owner's labels). `apply_to_job` returns the status: a guarded Easy Apply click gives Auto Applied; a prefilled form the user says they submitted (explicit **y**) gives User Applied; manual, skipped or dry-run is unmarked. Manual review is no longer recorded as an application unless the user confirms they submitted. The migration and protection rules are described in `docs/AUDIT.md` (2026-11-09). This closes GAP-JH-06.
+
+## Decision reasoning — documentation backfill, 2026-11-22
+
+**Proposed:** The choices below remain open. Source recommendations are preserved; classification supplies no implementation or release approval. Historical option mappings are retained explicitly where they conflict.
+
+### Reasoning for JH-D01
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses the supported release scope and security investment, across the safety proposal, local-only scope, optional integration and admin-future proposal. Source recommendation: original Question A; no answer is recorded by this backfill. The release proposal broadly says removing hosting closes JH-006 through JH-011; the newer local-only scope limits not-applicable closure to hosted parts (JH-006/008/009/011) and retains JH-007 local protections. Both dated statements remain; no gap is closed by this backfill. Code reading at the task base shows DEPLOYED_MODE still exists and main binds loopback; the proposed refusal to start is not implemented. JH-WP6 is this same gate, not another decision. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Should Job Hunter drop its multi-user "deployed" mode and stay a local, single-user tool? **A. Yes, drop it (recommended):** fastest safe release; no hosted option. **B. No, keep it:** the full Hosted Track in §11 must be built first. *(Recorded in `docs/GAP_AUDIT.md` → Open decisions.)*
+- **Prerequisites:** An explicit owner answer on the supported release profile; any implementation still needs its scoped proposal and verification.
+
+#### Option A: Local only (Suggested)
+
+- **What it is:** Remove/deprecate deployed mode and multi-user UI/API claims; retain loopback single-user admin. This is the source’s recommended drop option, not an action taken here.
+- **Unlocks:** A supported local-only boundary; hosted gaps can become not applicable only after removal.
+- **Blocks:** A supported hosted service from this codebase.
+- **Risks:** Users may still need remote access; a later hosted proposal can restore that scope after all security gates pass. Likelihood is Unknown — operator remote-access requirements would establish unmet demand.
+- **Effort:** Unknown — maintainer needs a removal/UI/docs breakdown plus the conditional scope answers to estimate duration.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Secure hosting) as simultaneous choices for JH-D01.
+- **Needs first:** Decide JH-D01-A/B/C before implementing the drop scope.
+
+#### Option B: Secure hosting
+
+- **What it is:** Retain deployed mode and implement the entire Hosted Track in §11 of the release/safety proposal. Keep hosting unsupported until every acceptance gate passes.
+- **Unlocks:** A possible authenticated, isolated hosted service after verification.
+- **Blocks:** The fastest release obtained by removing the hosted profile.
+- **Risks:** Incomplete isolation could expose profiles or execute untrusted Python; stop exposure and require the full hosted test matrix before reopening. Likelihood is Unknown — a complete tenant-isolation, upload and session security test report would establish remaining exposure.
+- **Effort:** Unknown — maintainer and security reviewer need a complete hosted-track design and test breakdown to estimate duration.
+- **Money:** Unknown — the owner needs a priced plan for secure hosting, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Local only) as simultaneous choices for JH-D01.
+- **Needs first:** Auth, authorization, CSRF, declarative profiles, upload limits, safe persistence and production serving must all be designed and verified.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Supported audience | One trusted local operator | Multiple hosted users after security work |
+| Release dependency | Removal plus local scope choices | Entire hosted security track |
+
+- **Downstream impact:**
+  - **Changes:** A changes admin mode/UI, DEPLOY and setup/release claims under the local-only scope; B changes the hosted surfaces in release/safety §11. Neither removes submission confirmation or local-private-data rules.
+  - **Unblocks:** A unblocks removal planning and conditional JH-D01-A/B/C; B unblocks a separate hosted proposal, not a hosted release.
+- **Cost of deferring:** Hosted disposition remains open; supported local work can continue under existing authority. No default answer is applied. Cost begins when work assumes hosted support or invests in hosted-only UI; timing is Unknown — a scoped work plan would settle it.
+- **Worst case:** Dropping hosting proves too restrictive for intended users. Their unmet access need is the signal; retain the local release and propose the complete hosted track before restoring any exposure.

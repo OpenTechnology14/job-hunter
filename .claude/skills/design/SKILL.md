@@ -62,4 +62,4 @@ itself does no AI.
   submission path → write a proposal (`docs` skill) first.
 - Label claims Verified / Inferred / Proposed / Blocked.
 - Unknown? Ask the owner. Don't invent a decision to fill a gap.
-- Write each new decision with a stable ID and a one-sentence **Question:** line (choices plus a recommendation); see the `docs` skill.
+- Write each new decision with a stable ID, a plain Question plus short Suggested answer, and full same-document reasoning; see the `docs` skill. Classify scope, ownership, priority, risk, cost and release choices as strategic using the whole public proposal landscape. Technical methods within approved scope remain technical, but existing owner-reserved gates stay open. Escalate a method that changes a strategic boundary.

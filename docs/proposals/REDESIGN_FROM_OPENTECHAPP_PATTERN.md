@@ -168,15 +168,15 @@ visuals, but only to fix an accessibility failure.
 
 To move from **Proposed** to **Accepted**, the owner decides:
 
-| ID | Decision | Options | Blocks | Question |
-|---|---|---|---|---|
-| `JHD-REDESIGN-D01` | Is the Flask admin a long-lived surface, or frozen pending the App's `job_hunter` template replacing it? | (a) long-lived: restyle it; (b) frozen: accessibility fixes only; (c) undecided: hold items 11–12 | Items 11 (admin strings), 12 | **Question:** Keep improving the Flask admin's look, or freeze it because the OpenTech app's template will replace it? **A. Freeze it; accessibility fixes only (recommended):** avoids throwaway work. **B. Keep improving it** |
-| `JHD-REDESIGN-D02` | Confirm Job Hunter's register as the OpenTechnology family, and record it in the hub's voice-and-tone guide (currently Blocked there) | Confirm / choose another register | The register line in item 1; item 11 | **Question:** Confirm Job Hunter's writing voice as the OpenTechnology family (deep, warm, measured, narrative)? **A. Yes (recommended):** you gave this direction on 2026-10-21; this records it in the hub. **B. Choose another register** |
-| `JHD-REDESIGN-D03` | Adopt the `docs/readable/` split? | (a) move prose docs and leave forwarding stubs; (b) new docs only go in `docs/readable/`; (c) keep the current layout | Items 8, 9 | **Question:** Adopt the OpenTech app's `docs/readable/` folder? **A. New docs only (recommended):** no inbound links break. **B. Move all prose docs, with forwarding stubs.** **C. Keep the current layout** |
-| `JHD-REDESIGN-D04` | Queue format | (a) a single ordered markdown queue in the MyFeed shape; (b) the App shape (registry plus CI audit, after `JH-001`); (c) keep the index list | Item 6 | **Question:** Add one ordered proposal-queue file with stable IDs? **A. Yes, a single markdown file like MyFeed's (recommended):** no extra tooling. **B. No, keep the index list** |
-| `JHD-REDESIGN-D05` | Is Job Hunter marketed, and as what? | (a) as an open-source project, with its own playbook; (b) only as the App's `job_hunter` template subject, pointer only; (c) not marketed | Item 13 | **Question:** Should Job Hunter be marketed on its own? **A. No, pointer only, as the OpenTech app's `job_hunter` template (recommended):** least upkeep for a public repo. **B. Yes, with its own open-source playbook.** **C. Not at all** |
-| `JHD-REDESIGN-D06` | Generate `AGENTS.md` from `CLAUDE.md`? | (a) yes, with a Python generator and `--check`; (b) keep them hand-written. Note that the two files currently hold different content, so generating one from the other is a merge, not a format change | Item 10 | **Question:** Generate `AGENTS.md` automatically from `CLAUDE.md`? **A. No, keep both hand-written for now (recommended):** they hold different content, so generating means merging them first. **B. Yes** |
-| `JHD-REDESIGN-D07` | How to fix the button contrast | (a) darken the accent fill behind white text; (b) dark text on the existing accent; (c) wait for hub D-5 (this leaves a known AA failure in place) | Item 2 | **Question:** Fix the low-contrast buttons by darkening the button color? **A. Yes, darken the fill (recommended):** same look and passes WCAG AA. **B. Use dark text instead.** **C. Wait for the hub's palette decision** (the failure stays) |
+| ID | Decision | Options | Blocks | Default | Question |
+|---|---|---|---|---|---|
+| `JHD-REDESIGN-D01` | Is the Flask admin a long-lived surface, or frozen pending the App's `job_hunter` template replacing it? | (a) long-lived: restyle it; (b) frozen: accessibility fixes only; (c) undecided: hold items 11–12 | Items 11 (admin strings), 12 | Freeze appearance — source recommendation | **Question:** Should visual improvements to the current admin panel stop except for accessibility fixes? **Suggested:** Freeze appearance |
+| `JHD-REDESIGN-D02` | Confirm Job Hunter's register as the OpenTechnology family, and record it in the hub's voice-and-tone guide (currently Blocked there) | Confirm / choose another register | The register line in item 1; item 11 | Confirm voice — source recommendation | **Question:** Should the writing voice stay deep, warm, measured, and narrative? **Suggested:** Confirm voice |
+| `JHD-REDESIGN-D03` | Adopt the `docs/readable/` split? | (a) move prose docs and leave forwarding stubs; (b) new docs only go in `docs/readable/`; (c) keep the current layout | Items 8, 9 | New docs only — source recommendation | **Question:** Should only new documentation use a separate folder for human-readable guides? **Suggested:** New docs only |
+| `JHD-REDESIGN-D04` | Queue format | (a) a single ordered markdown queue in the MyFeed shape; (b) the App shape (registry plus CI audit, after `JH-001`); (c) keep the index list | Item 6 | Ordered list — source recommendation | **Question:** Should proposals be tracked in one ordered list? **Suggested:** Ordered list |
+| `JHD-REDESIGN-D05` | Is Job Hunter marketed, and as what? | (a) as an open-source project, with its own playbook; (b) only as the App's `job_hunter` template subject, pointer only; (c) not marketed | Item 13 | Companion pointer — source recommendation | **Question:** Should this job-search tool be promoted only as part of a larger planning app? **Suggested:** Companion pointer |
+| `JHD-REDESIGN-D06` | Generate `AGENTS.md` from `CLAUDE.md`? | (a) yes, with a Python generator and `--check`; (b) keep them hand-written. Note that the two files currently hold different content, so generating one from the other is a merge, not a format change | Item 10 | Keep hand-written — source recommendation | **Question:** Should the two agent instruction guides stay hand-written for now? **Suggested:** Keep hand-written |
+| `JHD-REDESIGN-D07` | How to fix the button contrast | (a) darken the accent fill behind white text; (b) dark text on the existing accent; (c) wait for hub D-5 (this leaves a known AA failure in place) | Item 2 | Darken fill — source recommendation | **Question:** Should low-contrast buttons be fixed by darkening their background color? **Suggested:** Darken fill |
 Accepting this proposal is not adopting hub tokens. Token adoption follows the hub's approval record.
 
 ## 8. Tests
@@ -210,3 +210,342 @@ breaks inbound links.
 
 This PR appends this proposal to the end of the `docs/README.md` → Proposals list, which is
 this repo's queue convention. Later phases update the files named in §6.
+
+## Decision reasoning — documentation backfill, 2026-11-22
+
+**Proposed:** The choices below remain open. Source recommendations are preserved; classification supplies no implementation or release approval. Historical option mappings are retained explicitly where they conflict.
+
+### Reasoning for JHD-REDESIGN-D01
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses investment and ownership across the existing admin, optional connection and proposed replacement template. Public source describes replacement intent, not a verified replacement release. Source recommendation: original Question A; no answer is recorded by this backfill. Letter conflict: Question A=freeze, B=improve; original Options (a)=improve, (b)=freeze, (c)=undecided. The reasoning sequence follows Question A/B and appends the omitted source choice. This is a representation convention, not a changed historical answer key. Preserve both mappings; a letter-only answer without its source version needs clarification. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Keep improving the Flask admin's look, or freeze it because the OpenTech app's template will replace it? **A. Freeze it; accessibility fixes only (recommended):** avoids throwaway work. **B. Keep improving it**
+- **Prerequisites:** Owner answer on admin lifetime; accessibility work remains subject to D07 and its checks.
+
+#### Option A: Freeze appearance (Suggested)
+
+- **What it is:** Freeze the Flask admin’s appearance except accessibility fixes. This is Question A, Options (b), recommended to avoid throwaway work.
+- **Unlocks:** Concentrating effort on the proposed replacement and local safety.
+- **Blocks:** Broader admin restyling and item 12.
+- **Risks:** The replacement might not arrive; reassess admin lifetime from public delivery evidence and restart scoped improvements. Likelihood is Unknown — public replacement milestones and current operator needs would establish delay impact.
+- **Effort:** Unknown — maintainer needs a list separating accessibility fixes from restyling to estimate ongoing work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Keep improving); C (Undecided) as simultaneous choices for JHD-REDESIGN-D01.
+- **Needs first:** Keep required accessibility/safety work distinct from a restyle.
+
+#### Option B: Keep improving
+
+- **What it is:** Treat the current admin as long-lived and improve its look. This is Question B, Options (a).
+- **Unlocks:** Planning broader local UI improvements.
+- **Blocks:** The recommended freeze on appearance.
+- **Risks:** Work may be discarded if replacement arrives; stage changes and stop when public replacement readiness changes. Likelihood is Unknown — public replacement readiness would establish whether the planned restyle will be discarded.
+- **Effort:** Unknown — UI maintainer needs a scoped restyle/theme plan and public replacement evidence to estimate work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Freeze appearance); C (Undecided) as simultaneous choices for JHD-REDESIGN-D01.
+- **Needs first:** Define current admin needs and respect hub token approval before item 12.
+
+#### Option C: Undecided
+
+- **What it is:** Hold items 11–12 while the admin’s future is undecided. This preserves Options (c), absent from the old Question.
+- **Unlocks:** Time to establish replacement evidence before investing.
+- **Blocks:** Proceeding with those held items now.
+- **Risks:** Holding can leave useful copy/theme work stalled; review when replacement evidence or operator needs change. Likelihood is Unknown — public replacement milestones and a list of blocked admin needs would establish the cost of holding.
+- **Effort:** Unknown — owner needs public replacement evidence and operator needs before estimating the review checkpoint.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Freeze appearance); B (Keep improving) as simultaneous choices for JHD-REDESIGN-D01.
+- **Needs first:** Record what evidence will settle the lifetime decision without assuming template delivery.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Admin investment | Accessibility only | Broader improvements | Hold items 11–12 |
+| Replacement assumption | Favor proposed replacement | Maintain current surface | Wait for evidence |
+
+- **Downstream impact:**
+  - **Changes:** Redesign items 11–12 and their ownership; JH-D01 hosting scope and optional integration remain separate choices.
+  - **Unblocks:** Admin copy/theme planning under the chosen lifetime; no App-side implementation authority.
+- **Cost of deferring:** The gate and affected items stay open/held; accessibility fix choices remain D07. Unknown — public replacement delivery evidence and operator needs would settle the cost of continuing to wait.
+- **Worst case:** The freeze leaves users on a deteriorating admin while replacement is delayed. Reopen lifetime planning using current public evidence, retain safety fixes, and resume a bounded improvement plan.
+
+### Reasoning for JHD-REDESIGN-D02
+
+- **Context:** **Strategic; open, owner-reserved.** Confirms product voice and external hub ownership across documentation, marketing and admin copy; source records prior direction but still asks for hub confirmation. Source recommendation: original Question A; no answer is recorded by this backfill. Question A confirm (recommended), B choose another; unlettered Options Confirm / choose another agree. The dated proposal says pointer/register absent or hub Blocked; current DESIGN-SYSTEM-POINTER.md already records local values and register. That does not answer this still-open hub-confirmation gate. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Confirm Job Hunter's writing voice as the OpenTechnology family (deep, warm, measured, narrative)? **A. Yes (recommended):** you gave this direction on 2026-10-21; this records it in the hub. **B. Choose another register**
+- **Prerequisites:** Owner confirms register and approved public-safe wording; hub recording stays with its authorized owner.
+
+#### Option A: Confirm voice (Suggested)
+
+- **What it is:** Confirm the OpenTechnology family voice: deep, warm, measured, narrative. Record it in the hub’s voice-and-tone guide through its own authorized process.
+- **Unlocks:** Consistent README/user-guide copy and the register line in item 1.
+- **Blocks:** Choosing another register in this pass.
+- **Risks:** Tone may not suit short operational instructions; keep clear action wording and review representative copy. Likelihood is Unknown — novice review of representative setup and confirmation copy would establish clarity.
+- **Effort:** Unknown — copy maintainer needs representative edits and hub-owner confirmation to estimate the copy pass.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Another register) as simultaneous choices for JHD-REDESIGN-D02.
+- **Needs first:** Carry the source’s 2026-10-21 owner direction and current local pointer evidence.
+
+#### Option B: Another register
+
+- **What it is:** Choose another writing register. Preserve the old direction as superseded only after an explicit new answer.
+- **Unlocks:** A voice tailored to a newly stated audience.
+- **Blocks:** Confirming the existing direction unchanged.
+- **Risks:** Inconsistent copy may result during transition; agree example phrases and update scope before a copy pass. Likelihood is Unknown — approved example phrases and a cross-doc copy review would show inconsistencies.
+- **Effort:** Unknown — owner and copy maintainer need an approved register and sample phrases to estimate the rewrite.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Confirm voice) as simultaneous choices for JHD-REDESIGN-D02.
+- **Needs first:** Owner names the replacement register and intended audience.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Direction | Confirm prior voice | Choose new voice |
+| Hub record | Record confirmation | Record changed direction |
+
+- **Downstream impact:**
+  - **Changes:** Pointer register and item 11 copy; marketing D05 and admin D01 determine where that voice is applied.
+  - **Unblocks:** Voice-only documentation/copy planning after confirmation; no private hub content is copied.
+- **Cost of deferring:** Current local pointer keeps recorded values; a new copy pass cannot treat this gate as answered. Cost begins when copy work depends on an unconfirmed audience/register.
+- **Worst case:** The recommended register reduces clarity. Review real instructions with novice readers and revise the register by an explicit answer, without obscuring confirmation semantics.
+
+### Reasoning for JHD-REDESIGN-D03
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses documentation scope and migration priority across every proposal, inbound links, agent entry points and queue consumers. Source recommendation: original Question A; no answer is recorded by this backfill. Question A=new docs, B=move, C=keep; Options (a)=move, (b)=new docs, (c)=keep. Reasoning follows the Question keys only as a representation convention; both historical mappings remain and ambiguous letter-only answers need clarification. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Adopt the OpenTech app's `docs/readable/` folder? **A. New docs only (recommended):** no inbound links break. **B. Move all prose docs, with forwarding stubs.** **C. Keep the current layout**
+- **Prerequisites:** Owner chooses layout and inbound-link preservation strategy; community files remain at root.
+
+#### Option A: New docs only (Suggested)
+
+- **What it is:** Put only new prose docs in docs/readable/. Leave existing locations intact, as Question A / Options (b) recommends.
+- **Unlocks:** A gradual split without breaking existing inbound paths.
+- **Blocks:** A single uniform layout immediately.
+- **Risks:** Two layouts may confuse contributors; document placement rules and review each new file’s index entry. Likelihood is Unknown — a contributor placement walkthrough would show mixed-layout confusion.
+- **Effort:** Unknown — documentation maintainer needs a new-doc placement rule and index check to estimate upkeep.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Move with stubs); C (Keep layout) as simultaneous choices for JHD-REDESIGN-D03.
+- **Needs first:** Define which new prose docs qualify and keep existing links.
+
+#### Option B: Move with stubs
+
+- **What it is:** Move existing prose docs and leave forwarding stubs. This is Question B / Options (a).
+- **Unlocks:** A consistent human-readable folder after migration.
+- **Blocks:** Avoiding a broad document move.
+- **Risks:** Missed anchors or inbound links may break; inventory fragments and retain working forwarding paths. Likelihood is Unknown — an inbound-link/fragment inventory checked after a trial move would show broken links.
+- **Effort:** Unknown — documentation maintainer needs the full file/link/fragment map and trial forwarding stubs to size migration.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (New docs only); C (Keep layout) as simultaneous choices for JHD-REDESIGN-D03.
+- **Needs first:** Map existing inbound links and preserve root community files.
+
+#### Option C: Keep layout
+
+- **What it is:** Keep the current layout. This is Question C / Options (c).
+- **Unlocks:** Current paths and contributor habits unchanged.
+- **Blocks:** Adopting the proposed folder split.
+- **Risks:** Flat docs may remain harder to navigate; improve the index without moving files. Likelihood is Unknown — a find-the-guide walkthrough would establish navigation failures.
+- **Effort:** Unknown — documentation maintainer needs a navigation review of the current index to estimate upkeep.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (New docs only); B (Move with stubs) as simultaneous choices for JHD-REDESIGN-D03.
+- **Needs first:** Maintain docs/README.md as the documentation index.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Existing paths | Stay intact | Moves with forwarding stubs | Stay intact |
+| Layout result | Mixed over time | Unified prose folder | Current flat layout |
+
+- **Downstream impact:**
+  - **Changes:** Items 8–9, docs/README.md, root prose links and publicly described external crosswalk paths; this backfill moves no docs.
+  - **Unblocks:** Layout-dependent product/feature documentation planning.
+- **Cost of deferring:** Existing layout continues; no migration default. Cost begins when a new doc needs a placement convention or a later move affects inbound consumers.
+- **Worst case:** The mixed layout confuses contributors. Publish a clear index and reconsider a measured move with stubs rather than silently relocating existing guides.
+
+### Reasoning for JHD-REDESIGN-D04
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses work prioritization/governance scope across all proposals and gaps; a registry adds tooling and ongoing ownership. Source recommendation: original Question A; no answer is recorded by this backfill. Question A=ordered list, B=keep index; Options (a)=ordered list, (b)=registry, (c)=keep index. Reasoning follows Question A/B and appends the omitted registry choice as a representation convention, not a changed source answer key; ambiguous letter-only answers require clarification. The 2026-10-22 prose says “no CI”; CI now exists, so that historical premise is stale, not a reason to remove the registry alternative. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Add one ordered proposal-queue file with stable IDs? **A. Yes, a single markdown file like MyFeed's (recommended):** no extra tooling. **B. No, keep the index list**
+- **Prerequisites:** Owner chooses queue scope; existing proposals/PRs stay authoritative during any transition.
+
+#### Option A: Ordered list (Suggested)
+
+- **What it is:** Add a single ordered markdown queue with stable IDs, using the publicly described MyFeed shape. This is Question A / Options (a), the recommendation.
+- **Unlocks:** An ordered view without registry tooling.
+- **Blocks:** Keeping only the index list or requiring a registry audit.
+- **Risks:** A second list can drift from proposals; define ownership and link rather than duplicate detail. Likelihood is Unknown — reconciling a trial queue against proposal and PR state would show drift.
+- **Effort:** Unknown — maintainer needs a proposal/gap inventory and trial ordered-list reconciliation to size upkeep.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Keep index); C (Registry audit) as simultaneous choices for JHD-REDESIGN-D04.
+- **Needs first:** Inventory the four proposals and gap sub-items without approving their implementation.
+
+#### Option B: Keep index
+
+- **What it is:** Keep the current proposal index list. This is Question B / Options (c).
+- **Unlocks:** No new queue-maintenance process.
+- **Blocks:** A new ordered queue with stable proposal IDs.
+- **Risks:** Priority stays implicit; coordinator must use current task/PR authority and surface conflicts. Likelihood is Unknown — current assignment and priority conflicts would show the missing ordering cost.
+- **Effort:** Unknown — maintainer needs a current index reconciliation to estimate ongoing review.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Ordered list); C (Registry audit) as simultaneous choices for JHD-REDESIGN-D04.
+- **Needs first:** Keep docs/README.md links current.
+
+#### Option C: Registry audit
+
+- **What it is:** Use the App-shaped registry plus automated audit after JH-001. This is original Options (b), absent from the old Question.
+- **Unlocks:** Machine-checkable queue consistency if implemented.
+- **Blocks:** The no-extra-tooling queue recommendation.
+- **Risks:** Registry/schema and audit maintenance may exceed need; preserve proposal sources and revert to a simple linked view if it burdens contributors. Likelihood is Unknown — a registry prototype and audit-maintenance breakdown would establish ongoing burden.
+- **Effort:** Unknown — maintainer needs a registry/schema/audit prototype and migration plan to size work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Ordered list); B (Keep index) as simultaneous choices for JHD-REDESIGN-D04.
+- **Needs first:** Define registry authority, migration and CI checks in a separate scoped proposal.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Tracking mechanism | Single markdown queue | Existing index | Registry plus automated audit |
+| Upkeep | Manual ordering | Index maintenance | Schema and audit tooling |
+
+- **Downstream impact:**
+  - **Changes:** Item 6, proposal links/IDs and potential registry/audit ownership; no queue or generator is implemented by this backfill.
+  - **Unblocks:** Queue-format planning after owner answer; proposals remain individually gated.
+- **Cost of deferring:** Current index remains canonical; no new priorities are selected. Cost starts when competing proposals need explicit order; frequency is Unknown — current assignment conflicts would settle it.
+- **Worst case:** A manual queue becomes stale. Reconcile with owning proposals and current PRs; adopt a registry only through its retained source alternative and separate approval.
+
+### Reasoning for JHD-REDESIGN-D05
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses audience, maintenance and ownership across standalone product, optional integration and replacement-admin narrative; outside work is limited to public evidence. Source recommendation: original Question A; no answer is recorded by this backfill. Question A=pointer, B=own playbook, C=none; Options (a)=own playbook, (b)=pointer, (c)=none. Reasoning follows uppercase Question keys as a representation convention; original keys remain and ambiguous letter-only answers need clarification. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Should Job Hunter be marketed on its own? **A. No, pointer only, as the OpenTech app's `job_hunter` template (recommended):** least upkeep for a public repo. **B. Yes, with its own open-source playbook.** **C. Not at all**
+- **Prerequisites:** Owner decides audience and public marketing claims; any external crosswalk change needs its own authority.
+
+#### Option A: Companion pointer (Suggested)
+
+- **What it is:** Market only as the App’s job_hunter template subject, with a pointer. This is Question A / Options (b), the recommendation.
+- **Unlocks:** Lower-upkeep companion positioning.
+- **Blocks:** An independent open-source playbook in this scope.
+- **Risks:** Readers may think the integration already ships; label it proposed and keep standalone setup clear. Likelihood is Unknown — novice review of companion copy against current public integration evidence would identify misleading claims.
+- **Effort:** Unknown — copy maintainer needs public-safe pointer content and claim review to size upkeep.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Own playbook); C (No marketing) as simultaneous choices for JHD-REDESIGN-D05.
+- **Needs first:** Verify public claims and avoid quoting private marketing material.
+
+#### Option B: Own playbook
+
+- **What it is:** Market Job Hunter as its own open-source project with a playbook. This is Question B / Options (a).
+- **Unlocks:** Standalone audience and messaging.
+- **Blocks:** Pointer-only upkeep.
+- **Risks:** Claims may outpace implementation; review each against public code/evidence and retract incorrect copy. Likelihood is Unknown — a claim-by-claim review against public code would identify overstatement.
+- **Effort:** Unknown — marketing owner needs audience, claims and playbook outline to size work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Companion pointer); C (No marketing) as simultaneous choices for JHD-REDESIGN-D05.
+- **Needs first:** Owner defines audience and a maintainer for the playbook.
+
+#### Option C: No marketing
+
+- **What it is:** Do not market the project. This is Question C / Options (c).
+- **Unlocks:** No new marketing upkeep.
+- **Blocks:** Both a companion pointer campaign and an independent playbook.
+- **Risks:** Users may not discover useful local workflows; revisit from actual demand rather than invent usage. Likelihood is Unknown — public discovery and support evidence would establish missed demand.
+- **Effort:** Unknown — no new campaign is planned; a future request would need a fresh scope estimate.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Companion pointer); B (Own playbook) as simultaneous choices for JHD-REDESIGN-D05.
+- **Needs first:** Preserve existing technical documentation and public repository access.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Audience | App companion | Standalone users | No campaign |
+| New content | Pointer only | Own playbook | None planned |
+
+- **Downstream impact:**
+  - **Changes:** Item 13 pointer/playbook and public claims; integration readiness and admin future remain separate gates, not marketing promises.
+  - **Unblocks:** An authorized marketing plan after the answer; no external project edits.
+- **Cost of deferring:** No new marketing work proceeds under this backfill. Existing docs stay; cost of missed discovery is Unknown — public usage/support evidence would settle it.
+- **Worst case:** Companion positioning hides a useful standalone tool. Retain local setup docs and revisit an independent playbook from observed user needs.
+
+### Reasoning for JHD-REDESIGN-D06
+
+- **Context:** **Technical; open, owner-reserved.** Chooses instruction-maintenance mechanics; source explicitly reserves it to owner. Escalate any merger of distinct security/product instructions or new workflow migration. Source recommendation: original Question A; no answer is recorded by this backfill. Question A=manual, B=generate; Options (a)=generate, (b)=manual. Reasoning follows Question keys as a representation convention, retaining both original mappings; ambiguous letter-only answers require clarification. Existing CI satisfies neither content merger nor generator approval. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Generate `AGENTS.md` automatically from `CLAUDE.md`? **A. No, keep both hand-written for now (recommended):** they hold different content, so generating means merging them first. **B. Yes**
+- **Prerequisites:** Owner answer and a content-preservation plan before generation; AGENTS and CLAUDE contain different material.
+
+#### Option A: Keep hand-written (Suggested)
+
+- **What it is:** Keep both instruction files hand-written for now. This is Question A / Options (b), recommended because their content differs.
+- **Unlocks:** Preservation of each file’s distinct instructions without a generator merge.
+- **Blocks:** Automatic synchronization.
+- **Risks:** The files may drift; compare relevant instructions during changes and correct specific differences. Likelihood is Unknown — a comparison of unique instructions after an ordinary docs change would establish drift.
+- **Effort:** Unknown — maintainer needs a diff of unique rules and routine update frequency to size comparison work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Generate guide) as simultaneous choices for JHD-REDESIGN-D06.
+- **Needs first:** Continue loading both actual root files.
+
+#### Option B: Generate guide
+
+- **What it is:** Generate AGENTS.md from CLAUDE.md with a Python generator and --check. This is Question B / Options (a), requiring a content merger first.
+- **Unlocks:** A checkable generated entry point after merging content.
+- **Blocks:** Independent hand edits to generated output.
+- **Risks:** The merge could lose a security rule; inventory every unique instruction and fail the check on drift. Likelihood is Unknown — a full instruction-preservation diff and a failing stale-output fixture would establish lost rules.
+- **Effort:** Unknown — maintainer needs a rule-preservation merge and generator/check prototype to estimate duration.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Keep hand-written) as simultaneous choices for JHD-REDESIGN-D06.
+- **Needs first:** Approve canonical content, merge every unique rule and design meaningful generator checks.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Maintenance | Two authored files | One source plus generator |
+| First change | No content merger | Merge differing instructions first |
+
+- **Downstream impact:**
+  - **Changes:** Item 10 and future instruction-generation checks; this backfill neither changes root content nor flips a generator.
+  - **Unblocks:** A scoped maintenance proposal after owner choice.
+- **Cost of deferring:** Both files remain authored; drift review continues. Cost begins when conflicting instructions appear; no generator default is applied.
+- **Worst case:** Manual drift confuses a worker. Compare both guides, apply root product authority and repair a bounded discrepancy; propose generation only after preserving unique rules.
+
+### Reasoning for JHD-REDESIGN-D07
+
+- **Context:** **Technical; open, owner-reserved.** Chooses a delivery method for the approved accessibility objective, but source reserves the method. Escalate hub-token adoption, deliberate accessibility deferral or changed branding risk. Source recommendation: original Question A; no answer is recorded by this backfill. Source A/B/C agree and recommend A. The dated proposal both calls items 1–5 “no decision” and explicitly gates item 2 on D07; the explicit gate remains open. Ratios 3.18:1 and 4.09:1 belong to the source’s historical measurement, not a measurement executed in this backfill. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Fix the low-contrast buttons by darkening the button color? **A. Yes, darken the fill (recommended):** same look and passes WCAG AA. **B. Use dark text instead.** **C. Wait for the hub's palette decision** (the failure stays)
+- **Prerequisites:** Owner answers the method; recompute current contrast and retain local overrides until hub tokens are approved.
+
+#### Option A: Darken fill (Suggested)
+
+- **What it is:** Darken the accent fill behind white text to meet normal-text contrast. This is original Question A / Options (a), the recommendation.
+- **Unlocks:** The same broad appearance with a locally verified readable pairing.
+- **Blocks:** Keeping the exact current fill behind white text.
+- **Risks:** A new shade may affect hover/focus states; measure every affected pairing and revert to a verified local pair if needed. Likelihood is Unknown — contrast calculations and screenshots for every affected state would establish regressions.
+- **Effort:** Unknown — UI maintainer needs current contrast measurements, a fill change and state screenshots to estimate repair work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Dark text); C (Wait for palette) as simultaneous choices for JHD-REDESIGN-D07.
+- **Needs first:** Recompute current ratios and test focus/hover plus normal text.
+
+#### Option B: Dark text
+
+- **What it is:** Use dark text on the existing accent. This is Question B / Options (b).
+- **Unlocks:** A contrast fix without darkening the accent fill.
+- **Blocks:** Keeping white button text.
+- **Risks:** Text may clash with other states; measure each pairing and review a local screenshot before release. Likelihood is Unknown — contrast calculations and screenshots for all text/background states would establish regressions.
+- **Effort:** Unknown — UI maintainer needs text-color measurements and state screenshots to estimate repair work.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Darken fill); C (Wait for palette) as simultaneous choices for JHD-REDESIGN-D07.
+- **Needs first:** Verify every accent/hover/disabled pairing with the chosen text color.
+
+#### Option C: Wait for palette
+
+- **What it is:** Wait for the hub’s palette decision, preserving the known AA failure meanwhile. This is Question C / Options (c).
+- **Unlocks:** Avoiding a temporary local color adjustment.
+- **Blocks:** An immediate fix to the recorded contrast failure.
+- **Risks:** Unreadable buttons remain; retain the defect and implement a verified local fix if waiting is unacceptable. Likelihood is Unknown — current contrast measurements and user reports would establish the continuing usability impact.
+- **Effort:** Unknown — hub owner needs an approved palette record; its decision/release timing is not available here.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Darken fill); B (Dark text) as simultaneous choices for JHD-REDESIGN-D07.
+- **Needs first:** An approved hub palette and contrast evidence; no drafted token may be silently adopted.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Button text | White | Dark | Current white |
+| Fix timing | Local fix after measurement | Local fix after measurement | Wait for hub approval |
+
+- **Downstream impact:**
+  - **Changes:** Item 2 admin button rules and pointer local override; D01’s broader restyle freeze does not erase accessibility work.
+  - **Unblocks:** A narrowly scoped contrast repair after method approval and evidence.
+- **Cost of deferring:** The source’s recorded failure stays open; local safety work can proceed. No hub token is adopted by silence. Unknown — current color measurements and affected-user reports would settle present impact.
+- **Worst case:** The darker fill fails another state or harms usability. Detect by pairing measurements and screenshot review; replace it with a verified local pairing and keep the defect open until proven fixed.
