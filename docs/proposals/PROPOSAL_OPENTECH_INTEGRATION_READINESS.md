@@ -186,7 +186,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Best-effort acceptance across unknown versions.
 - **Risks:** A server upgrade may stop synchronization; retain sanitized events within approved bounds and update the contract after review. Likelihood is Unknown — upgrade/mismatch fixtures against the API-owner version contract would show rejected valid updates.
 - **Effort:** Unknown — API owner and maintainer need the version contract and mismatch fixtures to size client work.
-- **Money:** Unknown — the owner needs a priced plan for reject mismatches, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None — rejecting a version mismatch is local validation and requires no purchased service. Any endpoint subscription is a separate integration cost shared by both choices; implementation labor belongs in Effort.
 - **Incompatible with:** B (Best effort) as simultaneous choices for JH-OT-D01.
 - **Needs first:** API owner provides the supported version and mismatch response fixture.
 
@@ -197,7 +197,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** A reliable early refusal of incompatible formats.
 - **Risks:** A changed field could corrupt queue meaning; detect through contract fixtures, stop sync and repair sanitized state. Likelihood is Unknown — version-drift fixtures would show whether guessed fields alter queue meaning.
 - **Effort:** Unknown — API owner and maintainer need supported drift cases and compatibility fixtures to size client work.
-- **Money:** Unknown — the owner needs a priced plan for best effort, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None — best-effort format handling is client logic with no purchased compatibility service specified. Any endpoint subscription is shared with strict validation; the extra compatibility work belongs in Effort.
 - **Incompatible with:** A (Reject mismatches) as simultaneous choices for JH-OT-D01.
 - **Needs first:** Define which format differences are safe and prove forbidden fields stay excluded.
 
@@ -226,7 +226,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Automatic use of those fields in the remote queue.
 - **Risks:** The remote view may lack useful context; offer explicit field-level enablement after the owner reviews a fixture. Likelihood is Unknown — a remote-review walkthrough without those fields would establish lost usefulness.
 - **Effort:** Unknown — privacy owner and maintainer need allow-list fixtures and setup-toggle copy to size work.
-- **Money:** Unknown — the owner needs a priced plan for off until enabled, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None — omitting these fields requires no purchase or additional remote storage for them. Any baseline connection charge is separate; implementing field controls belongs in Effort.
 - **Incompatible with:** B (On by default) as simultaneous choices for JH-OT-D02.
 - **Needs first:** Mark both fields Blocked in the sanitizer fixture until the answer is recorded.
 
@@ -237,7 +237,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** The minimum-data default for these fields.
 - **Risks:** Unexpected sharing could violate user expectations; disable fields and clear affected remote records where supported, acknowledging copies may remain. Likelihood is Unknown — a consent review and synthetic outbound capture would establish unexpected exposure.
 - **Effort:** Unknown — privacy owner and maintainer need consent/default/deletion fixtures to size work.
-- **Money:** Unknown — the owner needs a priced plan for on by default, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** Unknown — any incremental transfer or remote-storage charge for these two fields needs their serialized sizes, event rate, retention period, and the actual endpoint’s quotas and billing rules. Baseline connection charges are common to both choices; consent and sanitizer work belong in Effort.
 - **Incompatible with:** A (Off until enabled) as simultaneous choices for JH-OT-D02.
 - **Needs first:** Document exact coarse-location/match-band definitions, consent, and deletion behavior.
 
@@ -266,7 +266,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Indefinite retry storage and a different initial limit.
 - **Risks:** Updates may expire before recovery or capacity may be too large; expose drops and tune against outage fixtures before release. Likelihood is Unknown — event-volume and long-outage fixtures with 1,000 items/7 days would quantify losses and disk use.
 - **Effort:** Unknown — maintainer needs bounded-outbox eviction/replay fixtures at the example limits to estimate work.
-- **Money:** Unknown — the owner needs a priced plan for example limits, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** Unknown — whether these example limits require extra local storage needs measured sanitized-event sizes at the 1,000-item cap, event volume over seven days, available disk capacity and the price of any additional storage actually required. Optional-connection charges are common to either limit policy; outbox implementation belongs in Effort.
 - **Incompatible with:** B (Other limits) as simultaneous choices for JH-OT-D03.
 - **Needs first:** Specify eviction/order/reporting and run OTJ-05/06 with the proposed caps.
 
@@ -277,7 +277,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Using the example caps as the initial policy.
 - **Risks:** Unmeasured replacement values may still lose updates or grow too far; compare synthetic outage results and revise. Likelihood is Unknown — the same fixtures with proposed replacement caps would compare losses and storage.
 - **Effort:** Unknown — maintainer needs event-volume measurements and a cap comparison to estimate sizing/review work.
-- **Money:** Unknown — the owner needs a priced plan for other limits, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** Unknown — incremental local storage expenditure needs the proposed replacement count/age caps, measured event sizes and arrival rate, available disk capacity and the price of any additional storage actually required. Optional-connection charges are independent of choosing these local bounds; sizing and eviction work belong in Effort.
 - **Incompatible with:** A (Example limits) as simultaneous choices for JH-OT-D03.
 - **Needs first:** Collect expected event volume, tolerable outage age and disk usage before proposing values.
 
@@ -306,7 +306,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** A plain-file-only setup across systems.
 - **Risks:** A locked or unavailable keychain may prevent sync; fail closed and preserve local operation while the user unlocks it. Likelihood is Unknown — supported-OS tests with locked/missing keychains would establish setup failures.
 - **Effort:** Unknown — desktop maintainer needs supported-OS keychain prototypes and failure fixtures to size work.
-- **Money:** Unknown — the owner needs a priced plan for protected store, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None for the operating-system password store itself, where already present. Unknown — the chosen keychain adapter’s license and supported-platform requirements would establish any added dependency cost; optional-connection charges are separate.
 - **Incompatible with:** B (Ignored file) as simultaneous choices for JH-OT-D04.
 - **Needs first:** Verify supported-system keychain APIs and unavailable-store behavior with synthetic tokens.
 
@@ -317,7 +317,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** The source’s promise that no token sits in a plain file.
 - **Risks:** A copied file or backup may expose the token; revoke it, remove copies where possible and move to protected storage. Likelihood is Unknown — permission, backup and redaction tests with a synthetic token would establish file exposure paths.
 - **Effort:** Unknown — security maintainer needs file-permission, backup, rotation and redaction fixtures to size work.
-- **Money:** Unknown — the owner needs a priced plan for ignored file, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None — a permission-restricted file uses the existing local filesystem, with no purchased secret-storage service or new dependency specified. File-security and rotation work belong in Effort; optional-connection charges are separate.
 - **Incompatible with:** A (Protected store) as simultaneous choices for JH-OT-D04.
 - **Needs first:** Approve path permissions, backup handling, rotation and redaction behavior before implementation.
 
@@ -346,7 +346,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Replacing CSV as the main source of truth.
 - **Risks:** Concurrent edits still require locking and revisions; keep existing guards and reproduce conflicts with synthetic data. Likelihood is Unknown — a concurrent synthetic scrape/edit workload would establish remaining CSV conflicts.
 - **Effort:** Unknown — maintainer needs a current atomic/revision contract review to estimate remaining integration work.
-- **Money:** Unknown — the owner needs a priced plan for keep spreadsheets, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** None — retaining the existing CSV store and atomic-write helpers adds no database service or dependency purchase. Optional-connection charges are separate; maintenance work belongs in Effort.
 - **Incompatible with:** B (Local database) as simultaneous choices for JH-OT-D05.
 - **Needs first:** Preserve atomic_io, stable IDs and stale-revision checks already present.
 
@@ -357,7 +357,7 @@ Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_
 - **Blocks:** Direct spreadsheet-file edits as the main-store workflow.
 - **Risks:** Migration could lose rows or break Sheets/CLI behavior; rehearse round trips and restore from a local backup. Likelihood is Unknown — round-trip migration and interrupted-write fixtures would establish row loss or compatibility failures.
 - **Effort:** Unknown — maintainer needs a SQLite migration/export/rollback prototype and fixtures to size work.
-- **Money:** Unknown — the owner needs a priced plan for local database, including the proposed connection or hosted service and support; this document enables no spend.
+- **Money:** Unknown — any incremental purchase needs the chosen SQLite driver’s license/dependencies and a migration measurement of database, backup and temporary-copy space against available local disk capacity. No database server or paid database service is specified; optional-connection charges are separate and migration/export work belongs in Effort.
 - **Incompatible with:** A (Keep spreadsheets) as simultaneous choices for JH-OT-D05.
 - **Needs first:** Approve migration, export compatibility, concurrent access and rollback tests before replacing CSV.
 

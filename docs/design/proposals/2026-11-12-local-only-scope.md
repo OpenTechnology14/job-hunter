@@ -69,7 +69,7 @@ No visual change beyond removing a badge.
 **Question:** Should unsupported hosting instructions be archived or deleted? **Suggested:** Archive instructions
 ### JH-D01-C
 
-**Question:** Should the panel reject requests using a website address instead of a local computer address? **Suggested:** Reject other hosts
+**Question:** Should the panel accept only requests addressed back to the very same computer? **Suggested:** Same computer only
 
 ## Decision gates
 
@@ -215,7 +215,7 @@ The owner answers JH-D01. If it's A, one PR implements the removals plus the A/B
 - **Context:** **Technical; open, owner-reserved.** Chooses additional request validation within local scope; owner-reserved security gate. Escalate any remote-access allowance as a trust-boundary change. Source recommendation: original Question A; no answer is recorded by this backfill. Original A yes/B no are retained. The source’s “no effect on normal use” is unmeasured; verify alternate local hosts before making that claim. Product constraints: [root safety and privacy rules](../../../AGENTS.md). Original question wording and options (verbatim, after its label): Also reject requests whose Host isn't `localhost`/`127.0.0.1`? **A. Yes (recommended):** blocks DNS-rebinding reads; no effect on normal use. **B. No, Origin + CSRF are enough.** Original pre-question label: - [ ] **JH-D01-C** (only if A) ; all conditional gates remain pending.
 - **Prerequisites:** JH-D01 = drop hosting and owner review of permitted local addresses.
 
-#### Option A: Reject other hosts (Suggested)
+#### Option A: Same computer only (Suggested)
 
 - **What it is:** Reject requests whose Host is not localhost or 127.0.0.1, as the source proposes. Keep Origin and single-use CSRF protections too.
 - **Unlocks:** Protection against DNS-rebinding reads as well as writes.
@@ -234,7 +234,7 @@ The owner answers JH-D01. If it's A, one PR implements the removals plus the A/B
 - **Risks:** Read exposure through rebinding may remain; investigate with a synthetic request test and add Host checks if confirmed. Likelihood is Unknown — a controlled DNS-rebinding read test would establish the remaining exposure.
 - **Effort:** Unknown — security reviewer needs a controlled rebinding test and accepted-risk note to estimate review effort.
 - **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
-- **Incompatible with:** A (Reject other hosts) as simultaneous choices for JH-D01-C.
+- **Incompatible with:** A (Same computer only) as simultaneous choices for JH-D01-C.
 - **Needs first:** Security review must record the accepted read-exposure limitation.
 
 #### Trade-offs
