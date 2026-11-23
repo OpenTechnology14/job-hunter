@@ -23,15 +23,15 @@ Implementation sequence, file-level changes, safety contracts, and release gates
 
 ## Open decisions (owner)
 
-Each decision ends with a one-sentence **Question:**, choices, and a recommendation. The explanation stays beside it. Answer with the ID and a letter (for example `JH-D02: A`).
+Open decisions use a plain question and short Suggested answer, with full same-document reasoning below. Answer with the ID and choice meaning. Resolved rows retain their historical wording unchanged; no answer is inferred from silence.
 
 | ID | Decision | Options | Context | Question |
 |---|---|---|---|---|
-| JH-D01 | Disposition of deployed/hosted mode | See `PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md` §4 (it is also work package JH-WP6) | Open; not touched by local work. JH-006–011 depend on it Scope of the drop option: [`docs/design/proposals/2026-11-12-local-only-scope.md`](design/proposals/2026-11-12-local-only-scope.md) (sub-questions JH-D01-A/B/C) | **Question:** Should Job Hunter drop its multi-user "deployed" mode and stay a local, single-user tool? **A. Yes, drop it (recommended):** fastest safe release; no hosted option. **B. No, keep it:** auth, CSRF and tenant isolation must be built first |
-| JH-D02 | Keep `fpdf2` in `requirements.txt`? | (a) drop it (nothing tracked imports it); (b) keep it for operators running a private local generator; (c) move it to an optional extras file | Split from JH-015 on 2026-10-24. Harmless either way; the choice depends on whether a generator will ship publicly | **Question:** Remove the unused `fpdf2` dependency? **A. Yes, remove it (recommended):** nothing in the repo uses it. **B. No, keep it:** only useful if you run a private resume generator from this checkout |
+| JH-D01 | Disposition of deployed/hosted mode | See `PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md` §4 (it is also work package JH-WP6) | Open; not touched by local work. JH-006–011 depend on it Scope of the drop option: [`docs/design/proposals/2026-11-12-local-only-scope.md`](design/proposals/2026-11-12-local-only-scope.md) (sub-questions JH-D01-A/B/C) | **Question:** Should this tool drop shared online use and stay on one trusted person’s computer? **Suggested:** Local only |
+| JH-D02 | Keep `fpdf2` in `requirements.txt`? | (a) drop it (nothing tracked imports it); (b) keep it for operators running a private local generator; (c) move it to an optional extras file | Split from JH-015 on 2026-10-24. Harmless either way; the choice depends on whether a generator will ship publicly | **Question:** Should the unused resume-making package be removed from the standard installation? **Suggested:** Remove package |
 | JH-D03 | MIT copyright holder | (a) an organization's legal name; (b) the owner's legal name | **Answered 2026-10-27: the owner's legal name, "Alex Moody".** `LICENSE` and the README updated | **Question:** Whose name goes on the MIT copyright line? **Answered:** the owner's legal name |
 | JH-D04 | Pre-rewrite data still public | (a) delete the branch and ask GitHub Support to purge cached refs; (b) leave it | **Resolved 2026-10-27.** The old repository was renamed `job-hunter-archive`, made private and archived. Its PR refs (which held the pre-rewrite data and could not be rewritten) are no longer public. This repository is a fresh single-commit re-creation. Full pre-scrub history is kept privately in `OpenTechnology14/Job-Hunter-Private` | **Question:** Delete the public data? **Answered:** archive the old repository privately and re-create the public one fresh |
-| JH-D05 | Require CI before merging | (a) branch protection on `main` requiring `CI / offline-tests`; (b) keep CI advisory | CI was added 2026-10-26 (JH-001). An admin override would still be possible for an explicit owner instruction | **Question:** Make the new CI check required before anything merges into `main`? **A. Yes (recommended):** broken or unsafe changes can't land unnoticed; merges wait a few minutes. **B. No, keep it advisory** |
+| JH-D05 | Require CI before merging | (a) branch protection on `main` requiring `CI / offline-tests`; (b) keep CI advisory | CI was added 2026-10-26 (JH-001). An admin override would still be possible for an explicit owner instruction | **Question:** Should passing automated checks be required before changes are merged? **Suggested:** Require checks |
 | JH-D06 | Personal email in commit metadata | (a) enable GitHub's "Keep my email addresses private"; (b) also rebuild affected commits | **Resolved 2026-11-07 (option a, no history rewrite).** After the owner granted the `user` scope, `PATCH /user/email/visibility` set primary-email visibility to **private**. Verified: a `gh` squash merge made right after the flip is authored by the noreply address, while merges just before it carried the personal one. `main` has been noreply-only since the re-creation. Still carrying the old address, and not rewritten: PR #3's commits (`0bd2ff8`, plus the `d958ba1` squash on `codex/agent-workflow-reference`) and `refs/pull/3/head`, which owners can't delete. The separate "Block command line pushes that expose my email" setting is web-only and still off; local commits use the noreply identity | **Question:** Turn on GitHub's email-privacy setting? **Answered:** yes, done 2026-11-07 |
 | JH-D07 | Typed apply outcomes (GAP-JH-06) | Split "Done" by who clicked Submit | **Resolved 2026-11-09; labels locked by the owner:** **Auto Applied** (`auto_applied`: Job Hunter's guarded click) and **User Applied** (`user_applied`: Job Hunter prefilled, you clicked Submit and answered y). "Reviewed" is retired. Historical Done → Auto Applied, with a one-time needs-review tag on non-Easy-Apply rows (`python apply_status.py --profile <p> --migrate`). Design: [`docs/design/proposals/2026-11-09-auto-vs-user-applied.md`](design/proposals/2026-11-09-auto-vs-user-applied.md) | **Question:** How should Done be split? **Answered:** Auto Applied / User Applied |
 | JH-D08 | PR #1 (`codex/agent-workflow-reference`) carries the personal email | (a) squash-merge only; (b) rebuild its commits first; (c) merge as-is | **Resolved 2026-11-08: owner chose A, squash only.** PR #1's head `d958ba1` keeps the old address in its own metadata, but a squash merge writes a new noreply-authored commit, so it never reaches `main`. Generalized as a standing rule in AGENTS.md, CONTRIBUTING.md and AGENT_STEERING_AND_STANDUPS.md: any PR with pre-2026-11-07 commits is squash-merged. PR #1 still has to resolve its conflicts with `main` (branch owner) | **Question:** Land PR #1 as a squash merge instead of rebuilding it? **Answered:** A, squash only |
@@ -39,3 +39,138 @@ Each decision ends with a one-sentence **Question:**, choices, and a recommendat
 There are no other `JH-WP*` decisions. JH-WP6 *is* JH-D01; JH-WP0–WP5 are implementation work with no open owner choice.
 
 Local release work must not accidentally imply hosted readiness. Track and label the two release profiles separately.
+
+## Decision reasoning — documentation backfill, 2026-11-22
+
+**Proposed:** The choices below remain open. Source recommendations are preserved; classification supplies no implementation or release approval. Historical option mappings are retained explicitly where they conflict.
+
+### Reasoning for JH-D01
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses the supported release scope and security investment, across the safety proposal, local-only scope, optional integration and admin-future proposal. Source recommendation: original Question A; no answer is recorded by this backfill. This table has no recommendation column: the new Suggested is the author’s presentation of that same source recommendation, not an owner answer. The release proposal broadly says removing hosting closes JH-006 through JH-011; the newer local-only scope limits not-applicable closure to hosted parts (JH-006/008/009/011) and retains JH-007 local protections. Both dated statements remain; no gap is closed by this backfill. Code reading at the task base shows DEPLOYED_MODE still exists and main binds loopback; the proposed refusal to start is not implemented. JH-WP6 is this same gate, not another decision. Product constraints: [root safety and privacy rules](../AGENTS.md). Original question wording and options (verbatim, after its label): Should Job Hunter drop its multi-user "deployed" mode and stay a local, single-user tool? **A. Yes, drop it (recommended):** fastest safe release; no hosted option. **B. No, keep it:** auth, CSRF and tenant isolation must be built first
+- **Prerequisites:** An explicit owner answer on the supported release profile; any implementation still needs its scoped proposal and verification.
+
+#### Option A: Local only (Suggested)
+
+- **What it is:** Remove/deprecate deployed mode and multi-user UI/API claims; retain loopback single-user admin. This is the source’s recommended drop option, not an action taken here.
+- **Unlocks:** A supported local-only boundary; hosted gaps can become not applicable only after removal.
+- **Blocks:** A supported hosted service from this codebase.
+- **Risks:** Users may still need remote access; a later hosted proposal can restore that scope after all security gates pass. Likelihood is Unknown — operator remote-access requirements would establish unmet demand.
+- **Effort:** Unknown — maintainer needs a removal/UI/docs breakdown plus the conditional scope answers to estimate duration.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Secure hosting) as simultaneous choices for JH-D01.
+- **Needs first:** Decide JH-D01-A/B/C before implementing the drop scope.
+
+#### Option B: Secure hosting
+
+- **What it is:** Retain deployed mode and implement the entire Hosted Track in §11 of the release/safety proposal. Keep hosting unsupported until every acceptance gate passes.
+- **Unlocks:** A possible authenticated, isolated hosted service after verification.
+- **Blocks:** The fastest release obtained by removing the hosted profile.
+- **Risks:** Incomplete isolation could expose profiles or execute untrusted Python; stop exposure and require the full hosted test matrix before reopening. Likelihood is Unknown — a complete tenant-isolation, upload and session security test report would establish remaining exposure.
+- **Effort:** Unknown — maintainer and security reviewer need a complete hosted-track design and test breakdown to estimate duration.
+- **Money:** Unknown — the owner needs a priced plan for secure hosting, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Local only) as simultaneous choices for JH-D01.
+- **Needs first:** Auth, authorization, CSRF, declarative profiles, upload limits, safe persistence and production serving must all be designed and verified.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Supported audience | One trusted local operator | Multiple hosted users after security work |
+| Release dependency | Removal plus local scope choices | Entire hosted security track |
+
+- **Downstream impact:**
+  - **Changes:** A changes admin mode/UI, DEPLOY and setup/release claims under the local-only scope; B changes the hosted surfaces in release/safety §11. Neither removes submission confirmation or local-private-data rules.
+  - **Unblocks:** A unblocks removal planning and conditional JH-D01-A/B/C; B unblocks a separate hosted proposal, not a hosted release.
+- **Cost of deferring:** Hosted disposition remains open; supported local work can continue under existing authority. No default answer is applied. Cost begins when work assumes hosted support or invests in hosted-only UI; timing is Unknown — a scoped work plan would settle it.
+- **Worst case:** Dropping hosting proves too restrictive for intended users. Their unmet access need is the signal; retain the local release and propose the complete hosted track before restoring any exposure.
+
+### Reasoning for JH-D02
+
+- **Context:** **Technical; open, owner-reserved.** Settles dependency packaging within the current user-supplied-resume scope; owner-reserved despite technical classification. Escalate any proposal to ship a public generator as strategic scope. Source recommendation: original Question A; no answer is recorded by this backfill. This table has no recommendation column: the new Suggested is the author’s presentation of that same source recommendation, not an owner answer. Original Options (a)/(b)/(c) mean remove/keep/optional extras; Question A/B mean remove/keep. The third choice was absent from the old question and is retained here as C with original (c). Product constraints: [root safety and privacy rules](../AGENTS.md). Original question wording and options (verbatim, after its label): Remove the unused `fpdf2` dependency? **A. Yes, remove it (recommended):** nothing in the repo uses it. **B. No, keep it:** only useful if you run a private resume generator from this checkout
+- **Prerequisites:** Owner confirmation of whether private generator support belongs in the standard installation.
+
+#### Option A: Remove package (Suggested)
+
+- **What it is:** Remove fpdf2 from the default requirements. No tracked Python module currently imports it.
+- **Unlocks:** A default install without this unused package.
+- **Blocks:** Private generators relying on its automatic installation.
+- **Risks:** A private generator could stop working; an explicit separate installation or optional file can restore it. Likelihood is Unknown — a private-generator dependency inventory would identify affected installations.
+- **Effort:** Unknown — maintainer needs a requirements diff and clean-install check to estimate removal time.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Keep package); C (Optional extras) as simultaneous choices for JH-D02.
+- **Needs first:** Confirm private-generator users have a documented installation path.
+
+#### Option B: Keep package
+
+- **What it is:** Keep fpdf2 in the standard requirements for operators running a private local generator. This does not ship a generator publicly.
+- **Unlocks:** Existing private-generator installations keep their dependency.
+- **Blocks:** Removing the unused default dependency.
+- **Risks:** Users may assume a generator is included; clarify the absent public generator and reconsider packaging. Likelihood is Unknown — a setup walkthrough would show whether users expect an included generator.
+- **Effort:** Unknown — maintainer needs a dependency/support-note review to estimate ongoing upkeep.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Remove package); C (Optional extras) as simultaneous choices for JH-D02.
+- **Needs first:** Retain the upload workflow and absent-generator statement.
+
+#### Option C: Optional extras
+
+- **What it is:** Move fpdf2 to an optional extras file, as original Options (c) states. Operators needing a private generator install that file explicitly.
+- **Unlocks:** Separate generator support without a default dependency.
+- **Blocks:** One-command default installation for that private use.
+- **Risks:** Users may miss the extra install step; add explicit private-generator setup instructions without publishing private source. Likelihood is Unknown — a clean optional-file installation walkthrough would reveal missed steps.
+- **Effort:** Unknown — maintainer needs an optional-file setup prototype and install check to estimate duration.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Remove package); B (Keep package) as simultaneous choices for JH-D02.
+- **Needs first:** Define and document the optional requirements file in a later approved packaging change.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B | C |
+|---|---|---|---|
+| Default install | No fpdf2 | fpdf2 included | No fpdf2 |
+| Private generator setup | Separate manual install | Already installed | Explicit optional file |
+
+- **Downstream impact:**
+  - **Changes:** requirements.txt and generator/setup notes would change for A/C; B keeps the dependency and may clarify docs. JH-015 remains closed; no generator or runtime change is authorized.
+  - **Unblocks:** A packaging follow-up after an answer; no public-generator release.
+- **Cost of deferring:** The unused dependency stays installed. Local upload/apply work continues; no implied generator approval. Unknown — a dependency inventory and install-size measurement would settle the actual maintenance cost.
+- **Worst case:** Removal breaks a private generator’s setup. Restore an explicit installation instruction or optional dependency without importing private generator code.
+
+### Reasoning for JH-D05
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses release-risk acceptance and repository governance; technical configuration follows that owner choice. Source recommendation: original Question A; no answer is recorded by this backfill. This table has no recommendation column: the new Suggested is the author’s presentation of that same source recommendation, not an owner answer. Original (a)/(b) and Question A/B agree. The source recommends requiring checks. CI exists in .github/workflows/ci.yml; this backfill neither queries nor changes branch protection. Product constraints: [root safety and privacy rules](../AGENTS.md). Original question wording and options (verbatim, after its label): Make the new CI check required before anything merges into `main`? **A. Yes (recommended):** broken or unsafe changes can't land unnoticed; merges wait a few minutes. **B. No, keep it advisory**
+- **Prerequisites:** An owner answer and confirmation of the repository’s available branch-rule permissions.
+
+#### Option A: Require checks (Suggested)
+
+- **What it is:** Require CI / offline-tests on main through branch protection. Preserve the documented explicit per-PR owner override policy.
+- **Unlocks:** A failing required check blocks ordinary merges.
+- **Blocks:** Routine merges while required checks are failing or pending.
+- **Risks:** An unavailable check could block a safe change; use the explicit named-PR owner procedure and record outstanding evidence. Likelihood is Unknown — recent workflow failures and durations would establish outage blockage.
+- **Effort:** Unknown — repository owner needs exact branch-rule permissions/check names and a configuration review to estimate setup time.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** B (Advisory checks) as simultaneous choices for JH-D05.
+- **Needs first:** Verify the Python-matrix check names and branch-rule capabilities.
+
+#### Option B: Advisory checks
+
+- **What it is:** Keep the offline workflow advisory. Maintainers inspect results before acting under existing merge authority.
+- **Unlocks:** Maintainer judgment without a required-check wait.
+- **Blocks:** Automatic blocking of failing ordinary merges.
+- **Risks:** A failed check may be missed and unsafe work land; inspect every result and revert an offending change without weakening safety. Likelihood is Unknown — a PR/check audit would establish how often failing results are overlooked.
+- **Effort:** Unknown — maintainer needs recent PR volume and review timings to estimate ongoing manual cost.
+- **Money:** None — this choice adds no paid service; implementation/review labor is covered by the unmeasured Effort above.
+- **Incompatible with:** A (Require checks) as simultaneous choices for JH-D05.
+- **Needs first:** A maintainer must own review of every relevant result.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Ordinary failing check | Blocks merge | Does not block automatically |
+| Availability dependency | Required check must complete | Human review of result |
+
+- **Downstream impact:**
+  - **Changes:** A changes repository branch rules; B retains advisory settings. Neither changes test code or grants merge authority.
+  - **Unblocks:** A repository-setting task after owner approval; local docs work does not depend on that setting.
+- **Cost of deferring:** Advisory behavior continues; risk persists whenever a PR is merged without inspecting results. Source says merges wait a few minutes; actual duration is Unknown — recent workflow timings would settle it.
+- **Worst case:** Required checks become unavailable and block urgent work. Confirm the exact outage, retain failed/unrun evidence, and use only a named-PR owner override.

@@ -93,7 +93,11 @@ just write "accessible".
 
 ## Open questions
 
-- [ ] `<ID>` **Question:** `<one plain sentence>?` **A. `<choice>` (recommended):** `<tradeoff>`. **B. `<choice>`**
+Give each real question its ID outside the simple cell or line:
+
+**Question:** <one plain sentence?> **Suggested:** <one to three words>
+
+Fill a same-document `Reasoning for <ID>` section using the [proposal SOP](../../PROPOSAL_CREATION_SOP.md) and its full decision-template reference. Preserve every source option/label and recommendation; include classification, reservations, eight fields per option, comparison, downstream impact, deferral and recovery. This placeholder is not an open gate.
 
 ## Decision gates
 

@@ -43,6 +43,7 @@ Job-Hunter is a local-first, supervised job-search tool. This index separates us
 
 - [Proposal creation SOP](PROPOSAL_CREATION_SOP.md)
 - [Proposal template](proposals/TEMPLATE_PROPOSAL.md)
+- [Decision documentation backfill](proposals/PROPOSAL_DECISION_DOCUMENTATION_BACKFILL.md) — documentation-only candidate, inventory and review handoff; all product decisions remain open
 - [OpenTech integration and readiness proposal](proposals/PROPOSAL_OPENTECH_INTEGRATION_READINESS.md)
 - [Release and safety gap-closure proposal](proposals/PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md)
 - [Standalone workflow and OpenTech template testing](proposals/PROPOSAL_STANDALONE_WORKFLOW_AND_TEMPLATE_TESTING.md) — living doc, starting scaffold

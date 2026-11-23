@@ -154,13 +154,13 @@ Start with synthetic endpoint tests, then a private OpenTech project. Roll back 
 
 IDs were added 2026-10-26 so answers can be recorded. None of these blocks current local work: the integration is sequenced after JH-WP1–WP4.
 
-| ID | Item | Decision owner | Question |
-|---|---|---|---|
-| JH-OT-D01 | Exact OpenTech ingest schema/version compatibility | OpenTech API owner | **Question:** Pin Job Hunter to one versioned OpenTech ingest schema and reject mismatches? **A. Yes (recommended):** mismatches fail visibly instead of corrupting the queue. **B. No, best-effort** |
-| JH-OT-D02 | Whether coarse location and match band are enabled by default | Privacy/product owner | **Question:** Send coarse location and match band to OpenTech by default? **A. No, off until you enable them (recommended):** matches the local-first privacy rule. **B. Yes, on by default** |
-| JH-OT-D03 | Outbox maximum count/age | Maintainer | **Question:** Cap the offline outbox by count and age, with example defaults of 1,000 items / 7 days (placeholders, not measured)? **A. Yes, start there (recommended).** **B. Choose other limits** |
-| JH-OT-D04 | Token storage mechanism by OS | Security/desktop owner | **Question:** Store the OpenTech token in the operating-system keychain? **A. Yes (recommended):** the token never sits in a plain file. **B. No, a git-ignored file is acceptable** |
-| JH-OT-D05 | Long-term CSV vs SQLite persistence | Job-Hunter maintainer | **Question:** Keep CSV as the main job store? **A. Yes, and add atomic writes (recommended):** keeps the open-in-a-spreadsheet workflow; JH-010 needs atomic writes anyway. **B. Move to SQLite** |
+| ID | Item | Decision owner | Default | Question |
+|---|---|---|---|---|
+| JH-OT-D01 | Exact OpenTech ingest schema/version compatibility | OpenTech API owner | Reject mismatches — source recommendation | **Question:** Should the connection reject updates written for a different data format version? **Suggested:** Reject mismatches |
+| JH-OT-D02 | Whether coarse location and match band are enabled by default | Privacy/product owner | Off until enabled — source recommendation | **Question:** Should approximate job locations and match ratings be shared automatically? **Suggested:** Off until enabled |
+| JH-OT-D03 | Outbox maximum count/age | Maintainer | Example limits — source recommendation | **Question:** Should pending updates expire after seven days and stop at one thousand items? **Suggested:** Example limits |
+| JH-OT-D04 | Token storage mechanism by OS | Security/desktop owner | Protected store — source recommendation | **Question:** Should the connection’s access secret be kept in the computer’s protected password store? **Suggested:** Protected store |
+| JH-OT-D05 | Long-term CSV vs SQLite persistence | Job-Hunter maintainer | Keep spreadsheets — source recommendation | **Question:** Should jobs stay in spreadsheet files instead of moving to a local database? **Suggested:** Keep spreadsheets |
 
 ## 13. Existing-document updates
 
@@ -169,3 +169,207 @@ Update the README, setup checklist, testing guide, security policy, health check
 ## 14. Next concrete step (scoped 2026-10-23, not started)
 
 Delivery step 1 ("release truth") is owned by [`PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md`](PROPOSAL_RELEASE_AND_SAFETY_GAP_CLOSURE.md): JH-WP5 runs only after WP1–WP4. The first OpenTech-specific step that doesn't wait on code is a **sanitizer contract fixture**. This is a deterministic table of every candidate job/status field, each marked allow or deny, with a forbidden-field test (OTJ-03) written against it before `integrations/opentech/sanitize.py` exists. It's blocked by sequencing, not by a decision, except for one open privacy-owner item in §12: whether coarse location and match band are allowed by default. The fixture should mark those two as **Blocked** rather than guess.
+
+## Decision reasoning — documentation backfill, 2026-11-22
+
+**Proposed:** The choices below remain open. Source recommendations are preserved; classification supplies no implementation or release approval. Historical option mappings are retained explicitly where they conflict.
+
+### Reasoning for JH-OT-D01
+
+- **Context:** **Technical; open, owner-reserved.** Chooses interoperability mechanics for the optional integration; expressly reserved to the OpenTech API owner. Escalate a changed consumer contract or rollout commitment. Source recommendation: original Question A; no answer is recorded by this backfill. Original Question A rejects mismatches (recommended); B best-effort. Source table had no recommendation column; Default is added to preserve that explicit source recommendation. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Pin Job Hunter to one versioned OpenTech ingest schema and reject mismatches? **A. Yes (recommended):** mismatches fail visibly instead of corrupting the queue. **B. No, best-effort**
+- **Prerequisites:** JH-WP1–WP4 evidence and a compatible API-owner contract; integration remains opt-in and proposed.
+
+#### Option A: Reject mismatches (Suggested)
+
+- **What it is:** Pin one versioned OpenTech ingest schema and reject incompatible updates. Report a visible mismatch rather than silently guessing.
+- **Unlocks:** Explicit contract failure and testable compatibility.
+- **Blocks:** Best-effort acceptance across unknown versions.
+- **Risks:** A server upgrade may stop synchronization; retain sanitized events within approved bounds and update the contract after review. Likelihood is Unknown — upgrade/mismatch fixtures against the API-owner version contract would show rejected valid updates.
+- **Effort:** Unknown — API owner and maintainer need the version contract and mismatch fixtures to size client work.
+- **Money:** Unknown — the owner needs a priced plan for reject mismatches, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** B (Best effort) as simultaneous choices for JH-OT-D01.
+- **Needs first:** API owner provides the supported version and mismatch response fixture.
+
+#### Option B: Best effort
+
+- **What it is:** Attempt ingestion without a strict version mismatch rejection. Keep field allow-lists and submission safeguards regardless.
+- **Unlocks:** Potential compatibility across versions without a coordinated version pin.
+- **Blocks:** A reliable early refusal of incompatible formats.
+- **Risks:** A changed field could corrupt queue meaning; detect through contract fixtures, stop sync and repair sanitized state. Likelihood is Unknown — version-drift fixtures would show whether guessed fields alter queue meaning.
+- **Effort:** Unknown — API owner and maintainer need supported drift cases and compatibility fixtures to size client work.
+- **Money:** Unknown — the owner needs a priced plan for best effort, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Reject mismatches) as simultaneous choices for JH-OT-D01.
+- **Needs first:** Define which format differences are safe and prove forbidden fields stay excluded.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Mismatch behavior | Visible refusal | Attempt compatible interpretation |
+| Upgrade coordination | Version agreement first | Broader compatibility tests |
+
+- **Downstream impact:**
+  - **Changes:** Proposed integrations/opentech/client.py, sanitizer fixtures and API contract; API-owner coordination is limited to what this public proposal already describes.
+  - **Unblocks:** Contract fixtures and later client implementation after sequencing and authority are satisfied.
+- **Cost of deferring:** Client compatibility remains unsettled; current local scrape/apply continues. No best-effort default is authorized. Cost begins when either endpoint is implemented against an assumed version.
+- **Worst case:** Strict pinning interrupts valid sync after an upgrade. Disable integration, preserve local jobs, agree a new fixture and resume sanitized replay.
+
+### Reasoning for JH-OT-D02
+
+- **Context:** **Strategic; open, owner-reserved.** Chooses the default privacy boundary and product behavior, across optional integration and local-first scope; reserved to privacy/product owner. Source recommendation: original Question A; no answer is recorded by this backfill. A off (recommended), B on. Public §5 lists coarse location among candidate fields while §14 explicitly blocks the default choice; neither is permission to send it before this answer. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Send coarse location and match band to OpenTech by default? **A. No, off until you enable them (recommended):** matches the local-first privacy rule. **B. Yes, on by default**
+- **Prerequisites:** Privacy/product owner approves exact fields and default behavior; integration’s existing opt-in and sequencing requirements still apply.
+
+#### Option A: Off until enabled (Suggested)
+
+- **What it is:** Leave coarse location and match band off until explicitly enabled. No precise personal location or salary preference becomes permitted.
+- **Unlocks:** A smaller outbound default matching local-first privacy.
+- **Blocks:** Automatic use of those fields in the remote queue.
+- **Risks:** The remote view may lack useful context; offer explicit field-level enablement after the owner reviews a fixture. Likelihood is Unknown — a remote-review walkthrough without those fields would establish lost usefulness.
+- **Effort:** Unknown — privacy owner and maintainer need allow-list fixtures and setup-toggle copy to size work.
+- **Money:** Unknown — the owner needs a priced plan for off until enabled, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** B (On by default) as simultaneous choices for JH-OT-D02.
+- **Needs first:** Mark both fields Blocked in the sanitizer fixture until the answer is recorded.
+
+#### Option B: On by default
+
+- **What it is:** Include the two proposed fields by default when the optional connection is enabled. Keep all forbidden personal fields excluded.
+- **Unlocks:** Queue location and match context without an extra field toggle.
+- **Blocks:** The minimum-data default for these fields.
+- **Risks:** Unexpected sharing could violate user expectations; disable fields and clear affected remote records where supported, acknowledging copies may remain. Likelihood is Unknown — a consent review and synthetic outbound capture would establish unexpected exposure.
+- **Effort:** Unknown — privacy owner and maintainer need consent/default/deletion fixtures to size work.
+- **Money:** Unknown — the owner needs a priced plan for on by default, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Off until enabled) as simultaneous choices for JH-OT-D02.
+- **Needs first:** Document exact coarse-location/match-band definitions, consent, and deletion behavior.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Default data | Two fields excluded | Two fields included |
+| User action | Enable fields explicitly | Enable connection only |
+
+- **Downstream impact:**
+  - **Changes:** Sanitizer allow-list fixture, setup defaults and remote queue display; local-only use and submit confirmation do not change.
+  - **Unblocks:** Final classification of these two fixture fields, then privacy tests under the integration proposal.
+- **Cost of deferring:** The fixture leaves these fields Blocked. Other authorized local work continues; no outbound field is enabled by silence. Cost starts when a consumer requires those fields.
+- **Worst case:** Off defaults make queue review less useful. Let users deliberately enable the approved fields; do not broaden the allow-list automatically.
+
+### Reasoning for JH-OT-D03
+
+- **Context:** **Technical; open, owner-reserved.** Sets bounded-outage delivery mechanics for approved sanitized sync; maintainer-reserved. Escalate retention, data-loss acceptance or spend changes. Source recommendation: original Question A; no answer is recorded by this backfill. Original A starts with the examples (recommended); B chooses other limits. These numbers are explicitly unmeasured in the source. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Cap the offline outbox by count and age, with example defaults of 1,000 items / 7 days (placeholders, not measured)? **A. Yes, start there (recommended).** **B. Choose other limits**
+- **Prerequisites:** Maintainer approves the retention/drop policy, integration prerequisites, and synthetic outage/replay evidence.
+
+#### Option A: Example limits (Suggested)
+
+- **What it is:** Start with a cap of 1,000 outbox items and 7 days. These are the source’s placeholders, not measured capacity or retention guarantees.
+- **Unlocks:** Concrete initial bounds for outage tests.
+- **Blocks:** Indefinite retry storage and a different initial limit.
+- **Risks:** Updates may expire before recovery or capacity may be too large; expose drops and tune against outage fixtures before release. Likelihood is Unknown — event-volume and long-outage fixtures with 1,000 items/7 days would quantify losses and disk use.
+- **Effort:** Unknown — maintainer needs bounded-outbox eviction/replay fixtures at the example limits to estimate work.
+- **Money:** Unknown — the owner needs a priced plan for example limits, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** B (Other limits) as simultaneous choices for JH-OT-D03.
+- **Needs first:** Specify eviction/order/reporting and run OTJ-05/06 with the proposed caps.
+
+#### Option B: Other limits
+
+- **What it is:** Choose different count and age caps. Keep the outbox bounded, atomic and sanitized.
+- **Unlocks:** Limits based on observed traffic and recovery requirements.
+- **Blocks:** Using the example caps as the initial policy.
+- **Risks:** Unmeasured replacement values may still lose updates or grow too far; compare synthetic outage results and revise. Likelihood is Unknown — the same fixtures with proposed replacement caps would compare losses and storage.
+- **Effort:** Unknown — maintainer needs event-volume measurements and a cap comparison to estimate sizing/review work.
+- **Money:** Unknown — the owner needs a priced plan for other limits, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Example limits) as simultaneous choices for JH-OT-D03.
+- **Needs first:** Collect expected event volume, tolerable outage age and disk usage before proposing values.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Initial cap | 1,000 items / 7 days, placeholders | Values not yet chosen |
+| Sizing evidence | Validate example limits | Gather evidence then choose |
+
+- **Downstream impact:**
+  - **Changes:** Proposed outbox limits, full/expired error behavior and tests; no outbox exists here to reconfigure.
+  - **Unblocks:** Bounded-outbox design after a maintainer answer; count/age choices do not authorize enabling sync.
+- **Cost of deferring:** Outbox sizing remains blocked; local operations can continue disconnected. No placeholder becomes a runtime default. Cost starts when events would queue during an outage.
+- **Worst case:** Example caps discard useful updates during a long outage. Surface expired/full counts, rebuild sanitized current state after reconnect and revise approved limits.
+
+### Reasoning for JH-OT-D04
+
+- **Context:** **Technical; open, owner-reserved.** Selects secret storage within the proposed integration; security/desktop owner reserves the answer. Escalate changed credential exposure or platform support. Source recommendation: original Question A; no answer is recorded by this backfill. A keychain (recommended), B git-ignored file. §8 proposes an environment/OS reference; this remains a constraint to reconcile with any file choice, not a reason to erase B. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Store the OpenTech token in the operating-system keychain? **A. Yes (recommended):** the token never sits in a plain file. **B. No, a git-ignored file is acceptable**
+- **Prerequisites:** Security/desktop owner approves storage, supported operating systems and a synthetic secret-handling test plan; no credential is requested here.
+
+#### Option A: Protected store (Suggested)
+
+- **What it is:** Store the OpenTech token in the operating-system keychain. Keep only a secret reference in configuration.
+- **Unlocks:** Avoiding token plaintext in project files.
+- **Blocks:** A plain-file-only setup across systems.
+- **Risks:** A locked or unavailable keychain may prevent sync; fail closed and preserve local operation while the user unlocks it. Likelihood is Unknown — supported-OS tests with locked/missing keychains would establish setup failures.
+- **Effort:** Unknown — desktop maintainer needs supported-OS keychain prototypes and failure fixtures to size work.
+- **Money:** Unknown — the owner needs a priced plan for protected store, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** B (Ignored file) as simultaneous choices for JH-OT-D04.
+- **Needs first:** Verify supported-system keychain APIs and unavailable-store behavior with synthetic tokens.
+
+#### Option B: Ignored file
+
+- **What it is:** Store the token in a git-ignored file, as the source alternative allows. Restrict access and keep values out of logs and outbound error payloads.
+- **Unlocks:** A file-based setup where keychain access is unavailable.
+- **Blocks:** The source’s promise that no token sits in a plain file.
+- **Risks:** A copied file or backup may expose the token; revoke it, remove copies where possible and move to protected storage. Likelihood is Unknown — permission, backup and redaction tests with a synthetic token would establish file exposure paths.
+- **Effort:** Unknown — security maintainer needs file-permission, backup, rotation and redaction fixtures to size work.
+- **Money:** Unknown — the owner needs a priced plan for ignored file, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Protected store) as simultaneous choices for JH-OT-D04.
+- **Needs first:** Approve path permissions, backup handling, rotation and redaction behavior before implementation.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Plaintext file | Avoided | Present locally |
+| Platform dependency | Keychain availability | Filesystem permissions/backup policy |
+
+- **Downstream impact:**
+  - **Changes:** Integration setup, secret reference resolution and platform tests; no real token or secret store is touched.
+  - **Unblocks:** A credential-storage design review and later implementation after integration prerequisites.
+- **Cost of deferring:** Storage stays undecided and integration stays unavailable. Other local work proceeds; no fallback file is silently created. Cost begins when a supported system needs connection setup.
+- **Worst case:** Protected storage fails on a supported system. Disable sync, diagnose with synthetic tokens and approve a platform-specific recovery without exposing credentials.
+
+### Reasoning for JH-OT-D05
+
+- **Context:** **Technical; open, owner-reserved.** Selects persistence implementation while retaining local-first behavior; maintainer-reserved. Escalate loss of spreadsheet editing or a database-server requirement as strategic scope. Source recommendation: original Question A; no answer is recorded by this backfill. A CSV plus atomic writes (recommended), B SQLite. The old recommendation says JH-010 still needs atomic writes; GAP_AUDIT now records them closed, and local_sync imports atomic_io. The source’s dated recommendation is retained, not a claim that those writes are missing. Product constraints: [root safety and privacy rules](../../AGENTS.md). Original question wording and options (verbatim, after its label): Keep CSV as the main job store? **A. Yes, and add atomic writes (recommended):** keeps the open-in-a-spreadsheet workflow; JH-010 needs atomic writes anyway. **B. Move to SQLite**
+- **Prerequisites:** Maintainer answer, existing atomic/revision evidence and a migration/rollback contract for any store change.
+
+#### Option A: Keep spreadsheets (Suggested)
+
+- **What it is:** Keep CSV as the main job store and retain atomic writes. This is the original recommended choice.
+- **Unlocks:** Opening and editing jobs in a spreadsheet with existing local tools.
+- **Blocks:** Replacing CSV as the main source of truth.
+- **Risks:** Concurrent edits still require locking and revisions; keep existing guards and reproduce conflicts with synthetic data. Likelihood is Unknown — a concurrent synthetic scrape/edit workload would establish remaining CSV conflicts.
+- **Effort:** Unknown — maintainer needs a current atomic/revision contract review to estimate remaining integration work.
+- **Money:** Unknown — the owner needs a priced plan for keep spreadsheets, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** B (Local database) as simultaneous choices for JH-OT-D05.
+- **Needs first:** Preserve atomic_io, stable IDs and stale-revision checks already present.
+
+#### Option B: Local database
+
+- **What it is:** Move the main job store to SQLite. Define import/export so local workflows and private data remain controlled.
+- **Unlocks:** Transactional local storage if implemented correctly.
+- **Blocks:** Direct spreadsheet-file edits as the main-store workflow.
+- **Risks:** Migration could lose rows or break Sheets/CLI behavior; rehearse round trips and restore from a local backup. Likelihood is Unknown — round-trip migration and interrupted-write fixtures would establish row loss or compatibility failures.
+- **Effort:** Unknown — maintainer needs a SQLite migration/export/rollback prototype and fixtures to size work.
+- **Money:** Unknown — the owner needs a priced plan for local database, including the proposed connection or hosted service and support; this document enables no spend.
+- **Incompatible with:** A (Keep spreadsheets) as simultaneous choices for JH-OT-D05.
+- **Needs first:** Approve migration, export compatibility, concurrent access and rollback tests before replacing CSV.
+
+#### Trade-offs
+
+| Axis | A (Suggested) | B |
+|---|---|---|
+| Primary editing | Spreadsheet files | Database plus explicit export |
+| Transition | Keep current store | Migration and compatibility work |
+
+- **Downstream impact:**
+  - **Changes:** local_sync/storage/admin paths and integration outbox boundaries; a database change must respect CONTRIBUTING filesystem intent and FUTURE’s no-database-server rule.
+  - **Unblocks:** A persistence follow-up after explicit maintainer choice; integration does not require redoing closed atomic-write work.
+- **Cost of deferring:** Existing CSV with atomic writes stays; local work continues. Cost begins if integration relies on an unchosen transaction model; actual scaling need is Unknown — a concurrent workload fixture would settle it.
+- **Worst case:** CSV proves unsuitable for the intended workload. Preserve jobs with locks/revisions, measure a synthetic workload and propose a reversible SQLite migration.
